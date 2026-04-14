@@ -42,6 +42,8 @@ func Shortcuts() []common.Shortcut {
 		BaseRecordUpsert,
 		BaseRecordBatchCreate,
 		BaseRecordBatchUpdate,
+		BaseRecordShareLinkCreate,
+		BaseRecordShareLinkBatchCreate,
 		BaseRecordUploadAttachment,
 		BaseRecordDelete,
 		BaseRecordHistoryList,
