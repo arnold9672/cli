@@ -14,6 +14,8 @@ metadata:
 
 **CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
 
+**CRITICAL — 如果用户提到“模板”“套用模板”“参考某种主题/风格/版式”，或用户需求明显落在已有场景模板内（如工作汇报、产品介绍、商业计划书、培训、晋升汇报等），MUST 先读取 [template-catalog.md](references/template-catalog.md)，再去 `references/templates/` 目录下读取 1-2 个最匹配的 XML 模板全文作为样式参考。**
+
 ## 身份选择
 
 飞书幻灯片通常是用户自己的内容资源。**默认应优先显式使用 `--as user`（用户身份）执行 slides 相关操作**，始终显式指定身份。
@@ -44,6 +46,9 @@ lark-cli slides +create --title "演示文稿标题" --slides '[
 
 也可以分两步（先创建空白 PPT，再逐页添加），详见 [+create 参考文档](references/lark-slides-create.md)。
 
+> [!WARNING]
+> `--slides '[...]'` 适合简单页面批量创建，但并不等同于“10 页以内都安全”。如果 slide XML 含中文、大段文本、复杂布局、嵌套引号或较多特殊字符，shell 传参时可能出现转义或截断问题，导致内容丢失、页面空白或布局异常。遇到复杂页面时，优先改用“两步创建法”。
+
 > 以上是最小可用示例。更丰富的页面效果（渐变背景、卡片、图表、表格等），参考下方 Workflow 和 XML 模板。
 
 ## 执行前必做
@@ -61,6 +66,7 @@ lark-cli slides +create --title "演示文稿标题" --slides '[
 | 场景 | 文档 |
 |------|------|
 | 需要了解详细 XML 结构 | [xml-format-guide.md](references/xml-format-guide.md) |
+| 需要匹配 PPT 模板/主题风格 | [template-catalog.md](references/template-catalog.md) |
 | 需要 CLI 调用示例 | [examples.md](references/examples.md) |
 | 需要参考真实 PPT 的 XML | [slides_demo.xml](references/slides_demo.xml) |
 | 需要用 table/chart 等复杂元素 | [slides_xml_schema_definition.xml](references/slides_xml_schema_definition.xml)（完整 Schema） |
@@ -70,10 +76,25 @@ lark-cli slides +create --title "演示文稿标题" --slides '[
 
 > **这是演示文稿，不是文档。** 每页 slide 是独立的视觉画面，信息密度要低，排版要留白。
 
+### 创建方式选择
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `slides +create --slides '[...]'` 一步创建 |
+| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide create` 逐页添加 |
+| 已有 PPT 继续追加或插入页面 | 使用 `xml_presentation.slide create`，必要时配合 `before_slide_id` |
+
+> [!WARNING]
+> `--slides '[...]'` 的风险点主要在 shell 参数传递，而不是单纯页数。即使只有 1 页，只要 XML 足够复杂，也建议使用两步创建法。
+
 ```text
 Step 1: 需求澄清 & 读取知识
   - 澄清用户需求：主题、受众、页数、风格偏好
   - 如果用户没有明确风格，根据主题推荐（见下方风格判断表）
+  - 如果用户要求“模板/主题/风格参考”，或主题属于常见模板场景：
+    · 先读 template-catalog.md 做模板匹配
+    · 再去 references/templates/<category>--<file>.xml 读取 1-2 个最匹配模板全文
+    · 复用模板的 theme、配色、页面流、布局骨架，不要照搬占位文案
   - 读取 XML Schema 参考：
     · xml-schema-quick-ref.md — 元素和属性速查
     · xml-format-guide.md — 详细结构与示例
@@ -81,8 +102,11 @@ Step 1: 需求澄清 & 读取知识
 
 Step 2: 生成大纲 → 用户确认 → 创建
   - 生成结构化大纲（每页标题 + 要点 + 布局描述），交给用户确认
-  - 10 页以内：用 slides +create --slides '[...]' 一步创建 PPT 并添加所有页面
-  - 超过 10 页：先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+  - 如果已选模板，大纲和页面布局要明确标注“基于哪个模板/哪些模板改写”
+  - 先判断创建方式：
+    · 简单 XML：可用 `slides +create --slides '[...]'` 一步创建
+    · 复杂 XML：优先先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+    · 超过 10 页：默认使用两步创建，避免单次输入过长
   - 含本地图片：
     · 新建带图 PPT —— 在 slide XML 里写 <img src="@./pic.png" .../>，
       +create 会自动上传并替换为 file_token（详见 lark-slides-create.md）
@@ -95,12 +119,38 @@ Step 2: 生成大纲 → 用户确认 → 创建
   - 复杂元素（table、chart）需参考 XSD 原文
 
 Step 3: 审查 & 交付
-  - 创建完成后，用 xml_presentations.get 读取全文 XML，确认：
-    · 页数是否正确？每页内容是否完整？
+  - 创建完成后，必须用 xml_presentations.get 读取全文 XML 做创建后验证，确认：
+    · 页数是否正确？
+    · 每页 `<data>` 是否包含预期的 `<shape>` / `<img>` / 其他元素？
+    · 文本内容是否完整，是否有被截断、丢失、空白区域？
+    · 关键布局坐标和尺寸是否合理，是否出现明显重叠？
     · 配色是否统一？字号层级是否合理？
   - 有问题 → 用 xml_presentation.slide.delete 删除问题页，重新创建
   - 没问题 → 交付：告知用户演示文稿 ID 和访问方式
 ```
+
+### 创建后验证
+
+创建成功不等于内容正确。创建完 PPT 后，**必须**读取全文 XML 校验结果：
+
+```bash
+lark-cli slides xml_presentations get --as user \
+  --params '{"xml_presentation_id":"YOUR_ID"}'
+```
+
+重点检查：
+
+- [ ] 页数是否与预期一致
+- [ ] 每页 `<data>` 中是否包含所有预期元素
+- [ ] 文本内容是否完整，没有被 shell 截断或转义损坏
+- [ ] 白底内容区、卡片区、图文区等关键布局是否实际生成
+- [ ] 坐标、宽高是否合理，是否出现堆叠或越界
+
+发现问题时：
+
+1. 不要假设“创建成功就代表渲染正确”
+2. 先读取问题页的 XML，确认是生成问题还是传参损坏
+3. 删除问题页后重新添加；复杂页面优先改用两步创建法
 
 ### jq 命令模板（编辑已有 PPT 时使用）
 
@@ -184,6 +234,17 @@ N. 结尾页：[结尾文案]
 ### 常用 Slide XML 模板
 
 可直接复制使用的模板（封面页、内容页、数据卡片页、结尾页）：[slide-templates.md](references/slide-templates.md)
+
+### 场景模板目录（优先匹配）
+
+当用户明确要求模板，或需求本身已经能映射到典型 PPT 主题时，优先走下面的模板匹配流程：
+
+1. 先读 [template-catalog.md](references/template-catalog.md)，按场景、色调、正式度选 1-2 个模板
+2. 再用 Read 工具读取 `references/templates/<category>--<file>.xml` 的模板全文
+3. 提取模板中的 `<theme>`、封面样式、目录页、分节页、内容页、结尾页结构
+4. 用用户的真实内容重写页面，不要直接复用模板里的占位文字
+
+如果用户只说“帮我做一个产品介绍/晋升汇报/商业计划书 PPT”，即使没明确说“模板”，只要主题与目录中的模板明显匹配，也应该优先参考模板。
 
 ---
 
@@ -283,7 +344,7 @@ lark-cli slides <resource> <method> [flags]  # 调用 API
 ## 核心规则
 
 1. **先出大纲再动手**：创建 PPT 前先生成大纲交给用户确认，避免返工
-2. **创建流程**：10 页以内推荐 `slides +create --slides '[...]'` 一步创建；超过 10 页先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加
+2. **创建流程按复杂度优先判断，不只看页数**：简单 XML 可用 `slides +create --slides '[...]'`；复杂 XML（含中文、大段文本、复杂布局、特殊字符）即使页数很少，也优先先 `slides +create` 创建空白 PPT，再用 `xml_presentation.slide.create` 逐页添加。超过 10 页默认使用两步创建
 3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
 4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
@@ -308,6 +369,7 @@ lark-cli slides <resource> <method> [flags]  # 调用 API
 | 400 | XML 格式错误 | 检查 XML 语法，确保标签闭合 |
 | 400 | create 内容超出支持范围 | `xml_presentations.create` 仅用于创建空白 PPT，不要在这里传完整 slide 内容 |
 | 400 | 请求包装错误 | 检查 `--data` 是否按 schema 传入 `xml_presentation.content` 或 `slide.content` |
+| 创建成功但页面空白/内容缺失/布局错乱 | 常见于 `--slides '[...]'` 的 shell 转义或长参数传递问题 | 改用两步创建：先 `slides +create`，再用 `jq -n` 包装 `xml_presentation.slide.create` 逐页添加，并在创建后立即读取 XML 验证 |
 | 404 | 演示文稿不存在 | 检查 `xml_presentation_id` 是否正确 |
 | 404 | 幻灯片不存在 | 检查 `slide_id` 是否正确 |
 | 403 | 权限不足 | 检查是否拥有对应的 scope |
@@ -354,6 +416,7 @@ lark-cli slides <resource> <method> [flags]  # 调用 API
 |------|------|
 | [lark-slides-create.md](references/lark-slides-create.md) | **+create Shortcut：创建 PPT（支持 `--slides` 一步添加页面，含 `@` 占位符自动上传图片）** |
 | [lark-slides-media-upload.md](references/lark-slides-media-upload.md) | **+media-upload Shortcut：上传本地图片，返回 `file_token`** |
+| [template-catalog.md](references/template-catalog.md) | **按场景/色调匹配现成 PPT 模板，并定位到 `references/templates/*.xml`** |
 | [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md) | **XML Schema 精简速查（必读）** |
 | [slide-templates.md](references/slide-templates.md) | 可复制的 Slide XML 模板 |
 | [xml-format-guide.md](references/xml-format-guide.md) | XML 详细结构与示例 |
