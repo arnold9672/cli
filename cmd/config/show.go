@@ -44,6 +44,12 @@ func configShowRun(opts *ConfigShowOptions) error {
 	config, err := core.LoadMultiAppConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			ws := core.CurrentWorkspace()
+			if !ws.IsLocal() {
+				return output.ErrWithHint(output.ExitValidation, ws.Display(),
+					fmt.Sprintf("%s context detected but lark-cli not bound to %s workspace", ws.Display(), ws.Display()),
+					fmt.Sprintf("run: lark-cli config bind --source %s", ws.Display()))
+			}
 			return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
 		}
 		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
@@ -64,6 +70,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 		users = strings.Join(userStrs, ", ")
 	}
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+		"workspace": core.CurrentWorkspace().Display(),
 		"profile":   app.ProfileName(),
 		"appId":     app.AppId,
 		"appSecret": "****",

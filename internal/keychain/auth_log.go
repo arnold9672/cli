@@ -16,6 +16,23 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
+// RuntimeDirFunc returns the workspace-aware config directory.
+// Default: falls back to LARKSUITE_CLI_CONFIG_DIR or ~/.lark-cli (pre-workspace behavior).
+// Injected by cmdutil.NewDefault → core.GetRuntimeDir after workspace detection.
+// This avoids an import cycle (core → keychain → core).
+var RuntimeDirFunc = defaultRuntimeDir
+
+func defaultRuntimeDir() string {
+	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
+		return dir
+	}
+	home, err := vfs.UserHomeDir()
+	if err != nil || home == "" {
+		home = ""
+	}
+	return filepath.Join(home, ".lark-cli")
+}
+
 var (
 	authResponseLogger     *log.Logger
 	authResponseLoggerOnce = &sync.Once{}
@@ -25,6 +42,8 @@ var (
 )
 
 func authLogDir() string {
+	// LARKSUITE_CLI_LOG_DIR is the highest-priority override (FR-005).
+	// When set, it bypasses workspace subtree routing entirely.
 	if dir := os.Getenv("LARKSUITE_CLI_LOG_DIR"); dir != "" {
 		safeDir, err := validate.SafeEnvDirPath(dir, "LARKSUITE_CLI_LOG_DIR")
 		if err == nil {
@@ -32,16 +51,10 @@ func authLogDir() string {
 		}
 	}
 
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return filepath.Join(dir, "logs")
-	}
-
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-
-	return filepath.Join(home, ".lark-cli", "logs")
+	// Use workspace-aware runtime dir (FR-027).
+	// RuntimeDirFunc is injected by factory after workspace detection.
+	// Before injection: defaults to pre-workspace behavior (backward-compatible).
+	return filepath.Join(RuntimeDirFunc(), "logs")
 }
 
 func initAuthLogger() {
