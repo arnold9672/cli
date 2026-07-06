@@ -9,7 +9,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+      - -s -w -X code.byted.org/lark_search/larksuite-cli/internal/build.Version={{ .Version }} -X code.byted.org/lark_search/larksuite-cli/internal/build.Date={{ .Date }}
     goos:
       - darwin
       - linux
