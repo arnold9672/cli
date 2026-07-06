@@ -16,8 +16,8 @@ package im
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // MuteFilterMeta describes the outcome of a single page's mute filter run.

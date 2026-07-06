@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 
-	extcred "github.com/larksuite/cli/extension/credential"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
 )
 
 // classifyTATResponseCode wraps a deterministic (non-transient) failure from the

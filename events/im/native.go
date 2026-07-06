@@ -6,7 +6,7 @@ package im
 import (
 	"reflect"
 
-	"github.com/larksuite/cli/internal/event/schemas"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/schemas"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 

@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // flagName is a package-private snapshot of a pflag.Flag's identity.

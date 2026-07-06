@@ -23,10 +23,10 @@ import (
 	"sync"
 	"time"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/vfs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // authBridge handles /_sidecar/auth/* management endpoints.

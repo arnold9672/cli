@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // withStepContext annotates err with multi-step context (e.g. which steps

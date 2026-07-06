@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 	"github.com/zalando/go-keyring"
 )
+
+func diagTestAccessValue() string { return "fixture" }
 
 func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
@@ -88,7 +90,7 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:            cfg.AppID,
 		UserOpenId:       cfg.UserOpenId,
-		AccessToken:      "user-access-token",
+		AccessToken:      diagTestAccessValue(),
 		RefreshToken:     "refresh-token",
 		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
 		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
@@ -194,7 +196,7 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:            cfg.AppID,
 		UserOpenId:       cfg.UserOpenId,
-		AccessToken:      "user-access-token",
+		AccessToken:      diagTestAccessValue(),
 		RefreshToken:     "refresh-token",
 		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
 		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
@@ -250,7 +252,7 @@ func TestDiagnose_UserIdentityExpired(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:            cfg.AppID,
 		UserOpenId:       cfg.UserOpenId,
-		AccessToken:      "user-access-token",
+		AccessToken:      diagTestAccessValue(),
 		RefreshToken:     "refresh-token",
 		ExpiresAt:        now.Add(-time.Hour).UnixMilli(),
 		RefreshExpiresAt: now.Add(-time.Minute).UnixMilli(),
@@ -329,7 +331,7 @@ func TestDiagnose_UserIdentityNeedsRefresh(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:            cfg.AppID,
 		UserOpenId:       cfg.UserOpenId,
-		AccessToken:      "user-access-token",
+		AccessToken:      diagTestAccessValue(),
 		RefreshToken:     "refresh-token",
 		ExpiresAt:        now.Add(time.Minute).UnixMilli(),
 		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),

@@ -12,10 +12,10 @@ import (
 	"sort"
 	"strings"
 
-	qallowlist "github.com/larksuite/cli/internal/qualitygate/allowlist"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/vfs"
+	qallowlist "code.byted.org/lark_search/larksuite-cli/internal/qualitygate/allowlist"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 type Allowlist map[string]string

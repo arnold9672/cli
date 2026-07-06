@@ -19,11 +19,11 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/errs"
-	internalauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	internalauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // roundTripFunc is an adapter to use a function as http.RoundTripper.

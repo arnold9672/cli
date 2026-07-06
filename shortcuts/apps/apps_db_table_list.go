@@ -10,7 +10,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const dbTableListHint = "verify --app-id is correct; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"

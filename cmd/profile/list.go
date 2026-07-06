@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // profileListItem is the JSON output for a single profile entry.

@@ -8,35 +8,36 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/larksuite/cli/shortcuts/okr"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdmeta"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts/apps"
-	"github.com/larksuite/cli/shortcuts/base"
-	"github.com/larksuite/cli/shortcuts/calendar"
-	"github.com/larksuite/cli/shortcuts/common"
-	contact_shortcuts "github.com/larksuite/cli/shortcuts/contact"
-	"github.com/larksuite/cli/shortcuts/doc"
-	"github.com/larksuite/cli/shortcuts/drive"
-	"github.com/larksuite/cli/shortcuts/event"
-	"github.com/larksuite/cli/shortcuts/im"
-	"github.com/larksuite/cli/shortcuts/mail"
-	"github.com/larksuite/cli/shortcuts/markdown"
-	"github.com/larksuite/cli/shortcuts/minutes"
-	"github.com/larksuite/cli/shortcuts/note"
-	"github.com/larksuite/cli/shortcuts/sheets"
-	sheetsbackward "github.com/larksuite/cli/shortcuts/sheets/backward"
-	"github.com/larksuite/cli/shortcuts/slides"
-	"github.com/larksuite/cli/shortcuts/task"
-	"github.com/larksuite/cli/shortcuts/vc"
-	"github.com/larksuite/cli/shortcuts/whiteboard"
-	"github.com/larksuite/cli/shortcuts/wiki"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/deprecation"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/apps"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/base"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/calendar"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	contact_shortcuts "code.byted.org/lark_search/larksuite-cli/shortcuts/contact"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/doc"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/drive"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/event"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/im"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/markdown"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/memory"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/minutes"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/note"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/sheets"
+	sheetsbackward "code.byted.org/lark_search/larksuite-cli/shortcuts/sheets/backward"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/slides"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/task"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/vc"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/whiteboard"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/wiki"
 )
 
 // Empty brand (no config loaded) is treated as no-restriction so bootstrap
@@ -76,6 +77,7 @@ func init() {
 	allShortcuts = append(allShortcuts, event.Shortcuts()...)
 	allShortcuts = append(allShortcuts, mail.Shortcuts()...)
 	allShortcuts = append(allShortcuts, markdown.Shortcuts()...)
+	allShortcuts = append(allShortcuts, memory.Shortcuts()...)
 	allShortcuts = append(allShortcuts, slides.Shortcuts()...)
 	allShortcuts = append(allShortcuts, minutes.Shortcuts()...)
 	allShortcuts = append(allShortcuts, task.Shortcuts()...)

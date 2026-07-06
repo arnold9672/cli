@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	qdiff "github.com/larksuite/cli/internal/qualitygate/diff"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/vfs"
+	qdiff "code.byted.org/lark_search/larksuite-cli/internal/qualitygate/diff"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 func TestShouldRunNamingForCommandChanges(t *testing.T) {

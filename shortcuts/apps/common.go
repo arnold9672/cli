@@ -6,7 +6,7 @@ package apps
 import (
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // appsService 是 CLI 命令的 service 前缀（lark-cli apps ...）。

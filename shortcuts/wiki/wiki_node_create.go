@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const (

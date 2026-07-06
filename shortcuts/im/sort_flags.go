@@ -3,7 +3,7 @@
 
 package im
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // aliasFlagValue handles a renamed sort flag whose old name is kept as a silent
 // alias. It returns (oldValue, true) only when the old flag was explicitly used

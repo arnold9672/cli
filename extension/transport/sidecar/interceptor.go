@@ -20,9 +20,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/sidecar"
+	"code.byted.org/lark_search/larksuite-cli/extension/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 // Provider implements transport.Provider for the sidecar mode.

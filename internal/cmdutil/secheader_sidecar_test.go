@@ -8,8 +8,8 @@ package cmdutil
 import (
 	"testing"
 
-	sidecarcred "github.com/larksuite/cli/extension/credential/sidecar"
-	sidecartrans "github.com/larksuite/cli/extension/transport/sidecar"
+	sidecarcred "code.byted.org/lark_search/larksuite-cli/extension/credential/sidecar"
+	sidecartrans "code.byted.org/lark_search/larksuite-cli/extension/transport/sidecar"
 )
 
 // TestIsBuiltinProvider_SidecarProviders locks the classification for the

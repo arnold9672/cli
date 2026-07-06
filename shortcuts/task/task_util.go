@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/util"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var relativeTimeRe = regexp.MustCompile(`^([+-])(\d+)([dwmh])$`)

@@ -3,7 +3,7 @@
 
 package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 // minutesCodeMeta holds minutes-service Lark code → CodeMeta mappings.
 // Only codes whose meaning is stable across minutes endpoints are registered;

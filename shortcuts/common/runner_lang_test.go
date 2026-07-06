@@ -6,8 +6,8 @@ package common
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
 )
 
 func TestRuntimeContext_Lang(t *testing.T) {

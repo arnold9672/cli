@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 func main() {

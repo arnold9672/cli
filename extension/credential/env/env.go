@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 )
 
 // Provider resolves credentials from environment variables.

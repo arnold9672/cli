@@ -7,8 +7,8 @@ package whiteboard
 import (
 	"reflect"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/schemas"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/schemas"
 )
 
 // eventTypeWhiteboardUpdated is the OAPI event type for whiteboard content updates.

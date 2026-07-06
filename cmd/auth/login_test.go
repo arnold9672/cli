@@ -14,13 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts/common"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	"github.com/zalando/go-keyring"
 )
 

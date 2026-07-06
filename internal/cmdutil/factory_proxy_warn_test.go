@@ -7,8 +7,8 @@ import (
 	"io"
 	"testing"
 
-	_ "github.com/larksuite/cli/extension/credential/env" // registers the env-backed account provider
-	"github.com/larksuite/cli/internal/envvars"
+	_ "code.byted.org/lark_search/larksuite-cli/extension/credential/env" // registers the env-backed account provider
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 )
 
 // installProxyWarnSpy replaces warnIfProxied with a counter for one test and

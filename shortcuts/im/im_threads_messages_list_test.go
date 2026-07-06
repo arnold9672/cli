@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func newThreadsTestRT(t *testing.T, stringFlags map[string]string) *common.RuntimeContext {

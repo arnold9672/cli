@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 	"github.com/itchyny/gojq"
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
 )
 
 // consumeLoop reads events and dispatches to workers; cancels on terminal sink errors.

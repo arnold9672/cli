@@ -19,11 +19,11 @@ import (
 	"strings"
 	"testing"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/sidecar"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 // fakeExtProvider is a stub extcred.Provider for tests that returns a fixed token.

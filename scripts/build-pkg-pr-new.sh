@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR/bin" "$OUT_DIR/scripts"
 VERSION="$(node -p "require('./package.json').version")"
 DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 SHA="$(git rev-parse --short HEAD)"
-LDFLAGS="-s -w -X github.com/larksuite/cli/internal/build.Version=${VERSION}-${SHA} -X github.com/larksuite/cli/internal/build.Date=${DATE}"
+LDFLAGS="-s -w -X code.byted.org/lark_search/larksuite-cli/internal/build.Version=${VERSION}-${SHA} -X code.byted.org/lark_search/larksuite-cli/internal/build.Date=${DATE}"
 
 build_target() {
   local goos="$1"
@@ -89,7 +89,7 @@ cat > "$OUT_DIR/package.json" <<EOF_JSON
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/larksuite/cli.git"
+    "url": "git+https://code.byted.org/lark_search/larksuite-cli.git"
   },
   "license": "MIT",
   "files": [

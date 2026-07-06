@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/extension/credential"
-	envcred "github.com/larksuite/cli/extension/credential/env"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/extension/credential"
+	envcred "code.byted.org/lark_search/larksuite-cli/extension/credential/env"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // cmdutilLocalProvider has PkgPath under the official module
-// ("github.com/larksuite/cli/internal/cmdutil") and should be classified
+// ("code.byted.org/lark_search/larksuite-cli/internal/cmdutil") and should be classified
 // as builtin.
 type cmdutilLocalProvider struct{}
 
@@ -42,7 +42,7 @@ func TestIsBuiltinProvider_Nil(t *testing.T) {
 
 func TestIsBuiltinProvider_TypeUnderOfficialModule(t *testing.T) {
 	if !isBuiltinProvider(&cmdutilLocalProvider{}) {
-		t.Fatal("type under github.com/larksuite/cli/... should be builtin")
+		t.Fatal("type under code.byted.org/lark_search/larksuite-cli/... should be builtin")
 	}
 }
 
@@ -113,7 +113,7 @@ func TestIsBuiltinProvider_RealBuiltinProviders(t *testing.T) {
 
 func TestComputeBuildKind_ReturnsKnownValue(t *testing.T) {
 	// Under `go test`, Main.Path is typically the module being tested
-	// ("github.com/larksuite/cli"); the concrete return may still be
+	// ("code.byted.org/lark_search/larksuite-cli"); the concrete return may still be
 	// official, extended, or unknown depending on Main.Path and the
 	// registered providers. Just assert it's one of the defined values.
 	got := computeBuildKind()

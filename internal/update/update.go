@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/transport"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const (

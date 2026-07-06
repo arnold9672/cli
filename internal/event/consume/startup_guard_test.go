@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // failDialTransport refuses every dial so EnsureBus falls through to the

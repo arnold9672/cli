@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // VCParticipantMeetingEndedOutput is the flattened shape for vc.meeting.participant_meeting_ended_v1.

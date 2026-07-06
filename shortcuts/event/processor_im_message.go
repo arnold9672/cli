@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/larksuite/cli/internal/output"
-	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	convertlib "code.byted.org/lark_search/larksuite-cli/shortcuts/im/convert_lib"
 )
 
 // ImMessageProcessor handles im.message.receive_v1 events.

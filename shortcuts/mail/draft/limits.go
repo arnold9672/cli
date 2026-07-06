@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/mail/filecheck"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/filecheck"
 )
 
 // Attachment limits mirrored from the parent mail package so that the draft

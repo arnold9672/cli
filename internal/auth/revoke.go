@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // RevokeToken revokes a previously issued OAuth token.

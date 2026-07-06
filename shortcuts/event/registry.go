@@ -3,7 +3,7 @@
 
 package event
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 // ProcessorRegistry manages event_type → EventProcessor mappings.
 type ProcessorRegistry struct {

@@ -3,7 +3,7 @@
 
 package cmd
 
-import "github.com/larksuite/cli/internal/vfs"
+import "code.byted.org/lark_search/larksuite-cli/internal/vfs"
 
 // SetDefaultFS replaces the global filesystem implementation used by internal
 // packages. The provided fs must implement the vfs.FS interface. If fs is nil,

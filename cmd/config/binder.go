@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/binding"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/binding"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // Candidate is the source-agnostic view of a bindable account.

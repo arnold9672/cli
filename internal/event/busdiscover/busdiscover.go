@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 type Process struct {

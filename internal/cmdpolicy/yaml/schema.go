@@ -20,7 +20,7 @@ import (
 
 	gopkgyaml "gopkg.in/yaml.v3"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // ruleSchema is the internal yaml-tagged shape of one rule. Mirrors

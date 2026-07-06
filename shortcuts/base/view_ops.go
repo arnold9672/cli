@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func dryRunViewBase(runtime *common.RuntimeContext) *common.DryRunAPI {

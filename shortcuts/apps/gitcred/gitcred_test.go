@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func TestMain(m *testing.M) {

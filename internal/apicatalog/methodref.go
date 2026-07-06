@@ -6,7 +6,7 @@ package apicatalog
 import (
 	"strings"
 
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // TargetKind classifies what a schema/command path resolves to.

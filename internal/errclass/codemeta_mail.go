@@ -3,7 +3,7 @@
 
 package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 // mailCodeMeta holds mail-service Lark code -> CodeMeta mappings.
 // Only codes whose meaning is verifiable from repo evidence are registered;

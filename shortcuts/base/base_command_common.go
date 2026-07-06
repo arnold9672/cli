@@ -3,7 +3,7 @@
 
 package base
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func authTypes() []string {
 	return []string{"user", "bot"}

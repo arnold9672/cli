@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/vfs/localfileio"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func TestValidateMediaFlagPath(t *testing.T) {

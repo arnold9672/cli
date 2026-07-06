@@ -8,7 +8,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // wrapIMNetworkErr returns err unchanged when it is already a typed errs.*

@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/schemas"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/schemas"
 )
 
 const (

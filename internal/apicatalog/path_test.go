@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/larksuite/cli/internal/apicatalog"
+	"code.byted.org/lark_search/larksuite-cli/internal/apicatalog"
 )
 
 func TestParsePath(t *testing.T) {

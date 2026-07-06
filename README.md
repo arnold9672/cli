@@ -1,293 +1,207 @@
-# lark-cli
+# lark-memory-cli
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
-[![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
+`lark-memory-cli` 是这个 fork 中面向 Memory Hub 的专用命令入口，目前只聚焦两个
+shortcuts：
 
-[中文版](./README.zh.md) | [English](./README.md)
+- `lark-memory-cli memory +list`
+- `lark-memory-cli memory +get`
 
-The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, Markdown, and more, with 200+ commands and 26 AI Agent [Skills](./skills/).
+这两个命令使用用户身份调用，需要 `search:message` scope。Memory Hub 当前运行在
+pre OpenAPI 域名和 `ppe_memory_hub` 泳道下；安装脚本会生成独立 wrapper，只在
+`lark-memory-cli` 内部设置 pre 域名和泳道相关运行环境，不覆盖用户已有命令。
 
-[Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
+更完整的安装与排障说明见 [MEMORY_SHORTCUTS.md](./MEMORY_SHORTCUTS.md)。
 
-## Why lark-cli?
+## 一键安装
 
-- **Agent-Native Design** — 24 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
-- **Wide Coverage** — 18 business domains, 200+ curated commands, 26 AI Agent [Skills](./skills/)
-- **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
-- **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
-- **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
-- **Secure & Controllable** — Input injection protection, terminal output sanitization, OS-native keychain credential storage
-- **Three-Layer Architecture** — Shortcuts (human & AI friendly) → API Commands (platform-synced) → Raw API (full coverage), choose the right granularity
-
-## Features
-
-| Category      | Capabilities                                                                                                                      |
-| ------------- |-----------------------------------------------------------------------------------------------------------------------------------|
-| 📅 Calendar   | View, create and update events, invite attendees, find meeting rooms, RSVP to invitations, check free/busy & time suggestions     |
-| 💬 Messenger  | Send/reply messages, create and manage group chats, view chat history & threads, search messages, download media                  |
-| 📄 Docs       | Create, read, update, and search documents, read/write media & whiteboards                                                        |
-| 📁 Drive      | Upload and download files, search docs & wiki, manage comments                                                                    |
-| 📝 Markdown   | Create, fetch, patch, and overwrite Drive-native `.md` files                                                                      |
-| 📊 Base       | Create and manage tables, fields, records, views, dashboards, workflows, forms, roles & permissions, data aggregation & analytics |
-| 📈 Sheets     | Create, read, write, append, find, and export spreadsheet data                                                                    |
-| 🖼️ Slides     | Create and manage presentations, read presentation content, and add or remove slides                                              |
-| ✅ Tasks      | Create, query, update, and complete tasks; manage task lists, subtasks, comments & reminders                                      |
-| 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
-| 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
-| 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
-| 🎥 Meetings   | Search meeting records, query meeting minutes artifacts and recordings                                                            |
-| 🕐 Attendance | Query personal attendance check-in records                                                                                        |
-| ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
-| 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
-| 📋 Project    | Meegle — manage work items, schedules, and data via the standalone [meegle-cli](https://github.com/larksuite/meegle-cli) (install separately) |
-| 🔗 Apps       | Create Spark/Miaoda apps, publish HTML/static sites, run cloud generation, and manage access scope                                 |
-
-## Installation & Quick Start
-
-### Requirements
-
-Before you start, make sure you have:
-
-- Node.js (`npm`/`npx`)
-- Go `v1.23`+ and Python 3 (only required for building from source)
-
-### Quick Start (Human Users)
-
-> **Note for AI assistants:** If you are an AI Agent helping the user with installation, jump directly to [Quick Start (AI Agent)](#quick-start-ai-agent), which contains all the steps you need to complete.
-
-#### Install
-
-Choose **one** of the following methods:
-
-**Option 1 — From npm (recommended):**
+在具备 Codebase 访问权限和 Go 1.23+ 的 shell 中执行：
 
 ```bash
-npx @larksuite/cli@latest install
+bash -lc 'set -euo pipefail
+repo="git@code.byted.org:lark_search/larksuite-cli.git"
+branch="${LARK_CLI_MEMORY_BRANCH:-jhn_memory}"
+dir="${LARK_CLI_MEMORY_DIR:-$HOME/.lark-cli-memory}"
+prefix="${LARK_CLI_PREFIX:-$HOME/.local}"
+module="code.byted.org/lark_search/larksuite-cli"
+app_dir="$prefix/libexec/lark-memory-cli"
+wrapper="$prefix/bin/lark-memory-cli"
+
+if [ -d "$dir/.git" ]; then
+  git -C "$dir" fetch origin "$branch"
+  git -C "$dir" checkout "$branch"
+  git -C "$dir" pull --ff-only origin "$branch"
+else
+  git clone -b "$branch" "$repo" "$dir"
+fi
+
+if [ -n "${GO_BIN:-}" ]; then
+  go_bin="$GO_BIN"
+elif [ -x /opt/homebrew/opt/go/libexec/bin/go ]; then
+  go_bin=/opt/homebrew/opt/go/libexec/bin/go
+elif [ -x /usr/local/opt/go/libexec/bin/go ]; then
+  go_bin=/usr/local/opt/go/libexec/bin/go
+elif [ -x /usr/local/bytesuite-box/pkg/go/1.24.1/bin/go ]; then
+  go_bin=/usr/local/bytesuite-box/pkg/go/1.24.1/bin/go
+else
+  go_bin="$(command -v go)"
+fi
+
+unset GOROOT
+export GOTOOLCHAIN=local
+"$go_bin" version
+
+mkdir -p "$prefix/bin" "$app_dir"
+(
+  cd "$dir"
+  version="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+  build_date="$(date +%Y-%m-%d)"
+  "$go_bin" build -trimpath \
+    -ldflags "-s -w -X ${module}/internal/build.Version=${version} -X ${module}/internal/build.Date=${build_date}" \
+    -o "$app_dir/lark-cli" .
+)
+
+{
+  printf "%s\n" "#!/usr/bin/env bash"
+  printf "%s\n" "export LARKSUITE_CLI_OPEN_BASE_URL=\"\${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}\""
+  printf "%s\n" "export LARKSUITE_CLI_REMOTE_META=\"\${LARKSUITE_CLI_REMOTE_META:-off}\""
+  printf "%s\n" "exec \"$app_dir/lark-cli\" \"\$@\""
+} > "$wrapper"
+chmod +x "$wrapper"
+
+sync_skill() {
+  src="$1"
+  dst_root="$2"
+  skill_name="$(basename "$src")"
+  tmp="$dst_root/.${skill_name}.tmp.$$"
+  mkdir -p "$dst_root"
+  rm -rf "$tmp"
+  cp -R "$src" "$tmp"
+  rm -rf "$dst_root/$skill_name"
+  mv "$tmp" "$dst_root/$skill_name"
+}
+
+for skill_root in "$HOME/.agents/skills" "$HOME/.codex/skills"; do
+  sync_skill "$dir/skills/lark-memory" "$skill_root"
+  if [ ! -e "$skill_root/lark-shared" ]; then
+    sync_skill "$dir/skills/lark-shared" "$skill_root"
+  fi
+done
+
+shell_rc="$HOME/.zshrc"
+grep -qxF "export PATH=\"$prefix/bin:\$PATH\"" "$shell_rc" 2>/dev/null || echo "export PATH=\"$prefix/bin:\$PATH\"" >> "$shell_rc"
+
+export PATH="$prefix/bin:$PATH"
+lark-memory-cli --version
+'
 ```
 
-**Option 2 — From source:**
-
-Requires Go `v1.23`+ and Python 3.
+安装完成后，重新打开终端，或执行：
 
 ```bash
-git clone https://github.com/larksuite/cli.git
-cd cli
-make install
-
-# Install CLI SKILL (required)
-npx skills add larksuite/cli -y -g
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-#### Configure & Use
+可选自定义项：
 
 ```bash
-# 1. Configure app credentials (one-time, interactive guided setup)
-lark-cli config init
-
-# 2. Log in (--recommend auto-selects commonly used scopes)
-lark-cli auth login --recommend
-
-# 3. Start using
-lark-cli calendar +agenda
+export LARK_CLI_MEMORY_DIR="$HOME/dev/larksuite-cli-memory"
+export LARK_CLI_PREFIX="$HOME/.local"
+export LARK_CLI_MEMORY_BRANCH="jhn_memory"
+export GO_BIN="/path/to/go"
 ```
 
-## Quick Start (AI Agent)
+默认会复用现有配置和用户登录态。如果希望完全隔离配置，可以额外设置：
 
-> The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
-
-**Step 1 — Install**
+安装脚本也会把 `lark-memory` skill 同步到 `$HOME/.agents/skills/lark-memory`
+和 `$HOME/.codex/skills/lark-memory`。如果目标目录缺少 `lark-shared`，会补一份
+作为依赖。Codex/Agent 的 skill 列表通常在会话启动时加载；安装后命令立即可用，
+但 `lark-memory` 要出现在 skill 列表里，需要重启或新开一个 Codex/Agent 会话。
 
 ```bash
-npx @larksuite/cli@latest install
+export LARKSUITE_CLI_CONFIG_DIR="$HOME/.config/lark-memory-cli"
 ```
 
-**Step 2 — Configure app credentials**
+## 登录授权
 
-> Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
+已有可用用户登录态时可以跳过本节。
 
 ```bash
-lark-cli config init --new
+lark-memory-cli config init
+lark-memory-cli auth login --recommend
+lark-memory-cli auth status
 ```
 
-**Step 3 — Login**
+应用和用户授权必须包含 `search:message`。如果授权缺失，先确认应用 scope 已开通，
+再重新执行登录。
 
-> Same as above: run in the background, extract the authorization URL and send it to the user.
+## 查看 Memory 列表
 
 ```bash
-lark-cli auth login --recommend
+lark-memory-cli memory +list --as user
 ```
 
-**Step 4 — Verify**
+输出 JSON：
 
 ```bash
-lark-cli auth status
+lark-memory-cli memory +list --as user --format json
 ```
 
-## Agent Skills
-
-| Skill                           | Description                                                                                                    |
-| ------------------------------- |----------------------------------------------------------------------------------------------------------------|
-| `lark-shared`                   | App config, auth login, identity switching, scope management, security rules (auto-loaded by all other skills) |
-| `lark-calendar`                 | Calendar events (create/update), agenda view, free/busy queries, time suggestions, room finding, RSVP replies  |
-| `lark-im`                       | Send/reply messages, group chat management, message search, upload/download images & files, reactions          |
-| `lark-doc`                      | Create, read, update, search documents (Markdown-based)                                                        |
-| `lark-drive`                    | Upload, download files, manage permissions & comments                                                          |
-| `lark-markdown`                 | Create, fetch, patch, and overwrite Drive-native Markdown files                                                |
-| `lark-sheets`                   | Create, read, write, append, find, export spreadsheets                                                         |
-| `lark-slides`                   | Create and manage presentations, read presentation content, and add or remove slides                          |
-| `lark-base`                     | Tables, fields, records, views, dashboards, data aggregation & analytics                                       |
-| `lark-task`                     | Tasks, task lists, subtasks, reminders, member assignment                                                      |
-| `lark-mail`                     | Browse, search, read emails, send, reply, forward, draft management, watch new mail                            |
-| `lark-contact`                  | Search users by name/email/phone, get user profiles                                                            |
-| `lark-wiki`                     | Knowledge spaces, nodes, documents                                                                             |
-| `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format                               |
-| `lark-vc`                       | Search meeting records, query meeting minutes (summary, todos, transcript)                                     |
-| `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                                                 |
-| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters); upload audio/video to create minutes, download media |
-| `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
-| `lark-skill-maker`              | Custom skill creation framework                                                                                |
-| `lark-attendance`               | Query personal attendance check-in records                                                                     |
-| `lark-approval`                 | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                   |
-| `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                                                      |
-| `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                                                |
-| `lark-okr`                      | Query, create, update OKRs; manage objective & key results, alignments and indicators.                         |
-
-## Authentication
-
-| Command       | Description                                                    |
-| ------------- | -------------------------------------------------------------- |
-| `auth login`  | OAuth login with interactive selection or CLI flags for scopes |
-| `auth logout` | Sign out and remove stored credentials                         |
-| `auth status` | Show current login status and granted scopes                   |
-| `auth check`  | Verify a specific scope (exit 0 = ok, 1 = missing)            |
-| `auth scopes` | List all available scopes for the app                          |
-| `auth list`   | List all authenticated users                                   |
+给 Agent 使用的精简 JSON：
 
 ```bash
-# Interactive login (TUI guides domain and permission level selection)
-lark-cli auth login
-
-# Filter by domain
-lark-cli auth login --domain calendar,task
-
-# Recommended auto-approval scopes
-lark-cli auth login --recommend
-
-# Exact scope
-lark-cli auth login --scope "calendar:calendar:read"
-
-# Agent mode: return verification URL immediately, non-blocking
-lark-cli auth login --domain calendar --no-wait
-# Resume polling later
-lark-cli auth login --device-code <DEVICE_CODE>
-
-# Identity switching: execute commands as user or bot
-lark-cli calendar +agenda --as user
-lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
+lark-memory-cli memory +list --as user --format json \
+  --jq '{count: (.data.memories | length), memories: (.data.memories | map({memory_key, name, status, default_variant_key}))}'
 ```
 
-## Three-Layer Command System
+当前预期会看到：
 
-The CLI provides three levels of granularity, covering everything from quick operations to fully custom API calls:
+- `personal_memory_snapshot`
+- `personalized_conclusion`
 
-### 1. Shortcuts
-
-Prefixed with `+`, designed to be friendly for both humans and AI, with smart defaults, table output, and dry-run previews.
+## 获取单个 Memory
 
 ```bash
-lark-cli calendar +agenda
-lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --doc-format markdown --content $'<title>Weekly Report</title>\n# Progress\n- Completed feature X'
+lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot
 ```
 
-Run `lark-cli <service> --help` to see all shortcut commands.
-
-### 2. API Commands
-
-Auto-generated from Lark OAPI metadata, curated through evaluation and quality gates — 100+ commands mapped 1:1 to platform endpoints.
+输出 JSON：
 
 ```bash
-lark-cli calendar calendars list
-lark-cli calendar events instance_view --params '{"calendar_id":"primary","start_time":"1700000000","end_time":"1700086400"}'
+lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --format json
 ```
 
-### 3. Raw API Calls
-
-Call any Lark Open Platform endpoint directly, covering 2500+ APIs.
+不打印 payload 内容的安全检查命令：
 
 ```bash
-lark-cli api GET /open-apis/calendar/v4/calendars
-lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_id"}' --data '{"receive_id":"oc_xxx","msg_type":"text","content":"{\"text\":\"Hello\"}"}'
+lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --format json \
+  --jq '{memory_key: .data.memory_key, variant_key: .data.variant_key, status: .data.status, payload_type: .data.payload_type, has_payload: (.data.payload != null and .data.payload != "")}'
 ```
 
-## Advanced Usage
-
-### Output Formats
+可选参数：
 
 ```bash
---format json      # Full JSON response (default)
---format pretty    # Human-friendly formatted output
---format table     # Readable table
---format ndjson    # Newline-delimited JSON (for piping)
---format csv       # Comma-separated values
+lark-memory-cli memory +get --as user \
+  --memory-key personalized_conclusion \
+  --variant-key default \
+  --payload-mode summary
 ```
 
-### Pagination
+`--payload-mode` 支持 `metadata`、`summary`、`full`，默认值是 `full`。
+
+## 排障
+
+确认 wrapper 内部使用的是 pre 域名：
 
 ```bash
---page-all                  # Auto-paginate through all pages
---page-limit 5              # Max 5 pages
---page-delay 500            # 500ms between page requests
+head -n 5 "$(command -v lark-memory-cli)"
 ```
 
-### Dry Run
+期望能看到：
 
-For commands that may have side effects, preview the request with --dry-run first:
-
-```bash
-lark-cli im +messages-send --chat-id oc_xxx --text "hello" --dry-run
+```text
+LARKSUITE_CLI_OPEN_BASE_URL="${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}"
 ```
 
-### Schema Introspection
-
-Use schema to inspect any API method's parameters, request body, response structure, supported identities, and scopes:
-
-```bash
-lark-cli schema
-lark-cli schema calendar.events.instance_view
-lark-cli schema im.messages.delete
-```
-
-## Security & Risk Warnings (Read Before Use)
-
-This tool can be invoked by AI Agents to automate operations on the Lark/Feishu Open Platform, and carries inherent risks such as model hallucinations, unpredictable execution, and prompt injection. After you authorize Lark/Feishu permissions, the AI Agent will act under your user identity within the authorized scope, which may lead to high-risk consequences such as leakage of sensitive data or unauthorized operations. Please use with caution.
-
-To reduce these risks, the tool enables default security protections at multiple layers. However, these risks still exist. We strongly recommend that you do not proactively modify any default security settings; once relevant restrictions are relaxed, the risks will increase significantly, and you will bear the consequences.
-
-We recommend using the Lark/Feishu bot integrated with this tool as a private conversational assistant. Do not add it to group chats or allow other users to interact with it, to avoid abuse of permissions or data leakage.
-
-Please fully understand all usage risks. By using this tool, you are deemed to voluntarily assume all related responsibilities.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
-
-## Contributing
-
-Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/cli/issues) or [Pull Request](https://github.com/larksuite/cli/pulls).
-
-For major changes, we recommend discussing with us first via an Issue.
-
-Before opening a PR, see [AGENTS.md](./AGENTS.md) for the local build, test, and PR checklist used by contributors and AI agents.
-
-## License
-
-This project is licensed under the **MIT License**.
-When running, it calls Lark/Feishu Open Platform APIs. To use these APIs, you must comply with the following agreements and privacy policies:
-
-- [Feishu User Terms of Service](https://www.feishu.cn/terms)
-- [Feishu Privacy Policy](https://www.feishu.cn/privacy)
-- [Feishu Open Platform App Service Provider Security Management Specifications](https://open.feishu.cn/document/uAjLw4CM/uMzNwEjLzcDMx4yM3ATM/management-practice/app-service-provider-security-management-specifications)
-- [Lark User Terms of Service](https://www.larksuite.com/user-terms-of-service)
-- [Lark Privacy Policy](https://www.larksuite.com/privacy-policy)
+如果 `memory +list` 返回 `2200 Internal Error`，最常见原因是请求没有带 PPE
+泳道头。本分支的 memory shortcuts 会自动发送 `x-tt-env: ppe_memory_hub`；如果仍然报错，
+请确认已经从 `jhn_memory` 分支重新构建并安装。

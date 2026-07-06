@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 func TestAppsInputPathError_ClassifiesPathValidation(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/hook"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
 )
 
 // hookNamePattern is the grammar both Plugin.Name() and hookName must

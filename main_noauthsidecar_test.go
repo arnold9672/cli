@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 )
 
 func TestCheckNoAuthsidecarBuild_Unset(t *testing.T) {

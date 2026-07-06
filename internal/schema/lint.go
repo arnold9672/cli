@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 var validJSONSchemaTypes = map[string]bool{

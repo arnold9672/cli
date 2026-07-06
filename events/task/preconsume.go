@@ -6,8 +6,8 @@ package task
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 const taskSubscriptionPath = "/open-apis/task/v2/task_v2/task_subscription?user_id_type=open_id"

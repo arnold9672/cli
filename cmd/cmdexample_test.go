@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/cmd"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/shortcuts"
+	"code.byted.org/lark_search/larksuite-cli/cmd"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 type APIClient = event.APIClient

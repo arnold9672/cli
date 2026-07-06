@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // DriveTaskResult exposes a unified read path for the async task types produced

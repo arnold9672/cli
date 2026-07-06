@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 func TestComputeSubscriptionID(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/hook"
-	internalplatform "github.com/larksuite/cli/internal/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
+	internalplatform "code.byted.org/lark_search/larksuite-cli/internal/platform"
 )
 
 func TestBuildInventory_groupsByPluginName(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/charcheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/charcheck"
 )
 
 // ansiEscape matches ANSI CSI sequences (ESC[ ... letter) and OSC sequences (ESC] ... BEL).

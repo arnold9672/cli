@@ -4,8 +4,8 @@
 package cmdpolicy
 
 import (
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/suggest"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/suggest"
 )
 
 // suggestRisk returns the closest valid Risk literal by edit distance

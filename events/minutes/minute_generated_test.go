@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 type stubAPIClient struct {

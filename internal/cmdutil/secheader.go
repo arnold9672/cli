@@ -13,11 +13,11 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/extension/fileio"
-	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	exttransport "code.byted.org/lark_search/larksuite-cli/extension/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -39,7 +39,7 @@ const (
 	BuildKindExtended = "extended"
 	BuildKindUnknown  = "unknown"
 
-	officialModulePath = "github.com/larksuite/cli"
+	officialModulePath = "code.byted.org/lark_search/larksuite-cli"
 
 	agentTraceMaxLen = 1024
 )

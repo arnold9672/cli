@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // runHermesBindWithIdentity boots a Hermes-shaped fake env, runs `config bind`

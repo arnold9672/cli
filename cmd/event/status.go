@@ -13,12 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/event/busctl"
-	"github.com/larksuite/cli/internal/event/busdiscover"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/transport"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busctl"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busdiscover"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {

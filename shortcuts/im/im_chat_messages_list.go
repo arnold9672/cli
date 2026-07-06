@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
-	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	convertlib "code.byted.org/lark_search/larksuite-cli/shortcuts/im/convert_lib"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 

@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

@@ -10,7 +10,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // checkOwnerUID verifies the file is owned by the current user.

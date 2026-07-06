@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // AppsDBExecute executes SQL against an app database.

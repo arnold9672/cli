@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // recordedCall captures a single APIClient invocation for assertion.

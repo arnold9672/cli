@@ -12,7 +12,7 @@ import (
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 func TestRawHandlerLogsMalformedJSON(t *testing.T) {

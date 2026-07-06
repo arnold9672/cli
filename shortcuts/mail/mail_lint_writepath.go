@@ -4,8 +4,8 @@
 package mail
 
 import (
-	"github.com/larksuite/cli/shortcuts/common"
-	"github.com/larksuite/cli/shortcuts/mail/lint"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/lint"
 )
 
 // showLintDetailsFlag is the optional --show-lint-details flag shared by every

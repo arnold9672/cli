@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // VCRecordingTranscriptItemOutput is one flattened transcript item for recording events.

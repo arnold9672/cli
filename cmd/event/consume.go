@@ -16,17 +16,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/appmeta"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/consume"
-	"github.com/larksuite/cli/internal/event/transport"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/appmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/consume"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 type consumeCmdOpts struct {

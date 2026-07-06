@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // PrintIdentity outputs the current identity to stderr so callers (including AI agents)

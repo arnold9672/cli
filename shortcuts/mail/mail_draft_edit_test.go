@@ -8,9 +8,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
 	"github.com/spf13/cobra"
 )
 

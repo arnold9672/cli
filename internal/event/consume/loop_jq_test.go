@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func TestCompileJQReportsErrorEarly(t *testing.T) {

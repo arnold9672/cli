@@ -6,8 +6,8 @@ package cmdutil
 import (
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
 )
 
 // ParseLangFlag validates and canonicalizes a --lang value, shared by config

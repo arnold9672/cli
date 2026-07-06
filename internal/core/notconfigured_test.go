@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // saveAndRestoreWorkspace ensures package-level currentWorkspace is reset

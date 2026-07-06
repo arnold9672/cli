@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 // stubSourceMessageWithInlineImages registers HTTP stubs for a source message.

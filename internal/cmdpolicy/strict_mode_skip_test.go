@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
 )
 
 // cmdpolicy.Apply MUST NOT overwrite the denial annotation on a command

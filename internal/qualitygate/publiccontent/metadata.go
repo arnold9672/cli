@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 func LoadMetadata(path string) (Metadata, error) {

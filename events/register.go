@@ -5,12 +5,12 @@
 package events
 
 import (
-	"github.com/larksuite/cli/events/im"
-	"github.com/larksuite/cli/events/minutes"
-	"github.com/larksuite/cli/events/task"
-	"github.com/larksuite/cli/events/vc"
-	"github.com/larksuite/cli/events/whiteboard"
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/events/im"
+	"code.byted.org/lark_search/larksuite-cli/events/minutes"
+	"code.byted.org/lark_search/larksuite-cli/events/task"
+	"code.byted.org/lark_search/larksuite-cli/events/vc"
+	"code.byted.org/lark_search/larksuite-cli/events/whiteboard"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // Mail is intentionally omitted in this phase.

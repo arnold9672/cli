@@ -10,9 +10,9 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const (

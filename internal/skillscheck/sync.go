@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/selfupdate"
+	"code.byted.org/lark_search/larksuite-cli/internal/selfupdate"
 )
 
 var (

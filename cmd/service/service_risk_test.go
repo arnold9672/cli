@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // highRiskDeleteMethod mirrors a simple DELETE API with a required path

@@ -21,7 +21,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/larksuite/cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 )
 
 func init() {

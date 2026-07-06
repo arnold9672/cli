@@ -11,9 +11,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/larksuite/cli/internal/qualitygate/facts"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/qualitygate/semantic"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/semantic"
 )
 
 func main() {

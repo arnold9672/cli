@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // TestNewUATCallOptions validates the extraction of options from CLI config.

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/larksuite/cli/sidecar"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 // newForwardClient creates an HTTP client for forwarding requests to the

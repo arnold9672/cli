@@ -9,11 +9,11 @@ import (
 	"sort"
 	"strings"
 
-	rootcmd "github.com/larksuite/cli/cmd"
-	"github.com/larksuite/cli/internal/cmdmeta"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/registry"
+	rootcmd "code.byted.org/lark_search/larksuite-cli/cmd"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

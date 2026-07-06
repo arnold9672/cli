@@ -6,8 +6,8 @@ package examples
 import (
 	"strings"
 
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/skillscan"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/skillscan"
 )
 
 func FromManifest(m manifest.Manifest) []skillscan.Example {

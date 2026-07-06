@@ -6,7 +6,7 @@ package examples
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
 )
 
 func TestHarvestManifestExamples(t *testing.T) {

@@ -11,19 +11,19 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/cmd/service"
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/cmdmeta"
-	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/internal/hook"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/skillscheck"
-	"github.com/larksuite/cli/internal/suggest"
-	"github.com/larksuite/cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/cmd/service"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/deprecation"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/skillscheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/suggest"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -82,7 +82,7 @@ Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
 
 Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}{{if not .HasParent}}
 
-Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://github.com/larksuite/cli#agent-skills{{end}}
+Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://code.byted.org/lark_search/larksuite-cli#agent-skills{{end}}
 `
 
 // Execute runs the root command and returns the process exit code.

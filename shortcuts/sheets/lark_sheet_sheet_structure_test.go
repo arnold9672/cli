@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // TestSheetStructureShortcuts_DryRun covers all 8 shortcuts in

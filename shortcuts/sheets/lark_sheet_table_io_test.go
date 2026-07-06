@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // ─── pure helpers: date serial, typed cell mapping ────────────────────

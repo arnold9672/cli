@@ -17,7 +17,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 func TestSanitizeURLForDisplay(t *testing.T) {

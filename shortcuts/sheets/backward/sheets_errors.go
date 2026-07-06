@@ -3,7 +3,7 @@
 
 package backward
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 // wrapSheetsNetworkErr preserves typed boundary errors and only classifies raw
 // transport failures that still surface from stream/download paths.

@@ -6,8 +6,8 @@ package cmdpolicy
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // Apply walks the command tree and installs denyStubs for every path in

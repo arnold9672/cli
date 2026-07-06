@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/cmdmeta"
-	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // buildTree assembles a tiny realistic tree for engine tests:

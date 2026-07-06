@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // executableTestFS mocks vfs for tests that still need vfs.Executable.

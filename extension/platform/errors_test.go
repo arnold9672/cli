@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 func TestCommandDeniedError_messageFormats(t *testing.T) {

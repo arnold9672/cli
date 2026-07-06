@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 type loginScopeSummary struct {

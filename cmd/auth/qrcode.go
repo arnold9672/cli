@@ -13,10 +13,10 @@ import (
 	"github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // QRCodeOptions holds inputs for auth qrcode command.

@@ -8,8 +8,8 @@ package main
 import (
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/sidecar"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 // buildAllowedHosts extracts the set of allowed target hostnames from

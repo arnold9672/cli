@@ -11,7 +11,7 @@ import (
 
 	"github.com/itchyny/gojq"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // JqFilter applies a jq expression to data and writes the results to w.

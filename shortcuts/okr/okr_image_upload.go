@@ -12,8 +12,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // allowedImageExts lists the file extensions supported by the OKR image upload API.

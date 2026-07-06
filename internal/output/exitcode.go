@@ -6,7 +6,7 @@ package output
 import (
 	"errors"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // Fine-grained error types (permission, not_found, rate_limit, etc.)

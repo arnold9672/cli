@@ -4,7 +4,7 @@
 package cmd
 
 import (
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 	"github.com/spf13/pflag"
 )
 

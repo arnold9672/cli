@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // maxReplaceParts matches the server-side cap declared in meta_data.json

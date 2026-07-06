@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // resourceDownloadConcurrency caps in-flight resource downloads. Each download

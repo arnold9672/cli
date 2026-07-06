@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 	"github.com/gofrs/flock"
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)

@@ -6,8 +6,8 @@ package slides
 import (
 	"errors"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 // slidesInputStatError maps a FileIO.Stat error for an input image path to a

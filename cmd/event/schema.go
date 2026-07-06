@@ -11,11 +11,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
-	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/schemas"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/schemas"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // resolveSchemaJSON returns the final JSON Schema for an EventKey (reflected base, V2-wrapped for Native, overlay applied); orphans lists unresolved FieldOverrides pointers.

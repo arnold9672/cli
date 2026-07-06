@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/suggest"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/suggest"
 )
 
 const maxSuggestions = 3

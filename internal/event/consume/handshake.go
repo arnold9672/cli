@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 const helloAckTimeout = 5 * time.Second // symmetric with bus-side hello read deadline

@@ -7,9 +7,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // consumeRuntime routes event.APIClient calls through the shared client.APIClient with a pinned identity.

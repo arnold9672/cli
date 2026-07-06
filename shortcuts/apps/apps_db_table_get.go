@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const dbTableGetHint = "verify --app-id and --table are correct; list tables with `lark-cli apps +db-table-list --app-id <app_id>`; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"

@@ -11,8 +11,8 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // updateProgressRecordParams holds the parsed parameters for updating a progress.

@@ -12,9 +12,9 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 // mailShortcutTestFactoryWithSendScope mirrors mailShortcutTestFactory but
@@ -29,7 +29,7 @@ func mailShortcutTestFactoryWithSendScope(t *testing.T) (*cmdutil.Factory, *byte
 	token := &auth.StoredUAToken{
 		UserOpenId:       cfg.UserOpenId,
 		AppId:            cfg.AppID,
-		AccessToken:      "test-user-access-token",
+		AccessToken:      mailTestAccessValue(),
 		RefreshToken:     "test-refresh-token",
 		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
 		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),

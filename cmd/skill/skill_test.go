@@ -11,7 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // calFS is the default single-skill content tree for these tests. The embedded

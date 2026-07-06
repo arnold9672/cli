@@ -9,7 +9,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // StatusNotifier surfaces SourceState* lifecycle states; detail is free-form context.

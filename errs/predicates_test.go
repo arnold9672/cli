@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func TestIsRetryable(t *testing.T) {

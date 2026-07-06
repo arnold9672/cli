@@ -9,10 +9,10 @@ package skill
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/skillcontent"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/skillcontent"
 	"github.com/spf13/cobra"
 )
 

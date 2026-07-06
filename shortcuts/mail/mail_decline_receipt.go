@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // MailDeclineReceipt is the `+decline-receipt` shortcut: dismiss the read-

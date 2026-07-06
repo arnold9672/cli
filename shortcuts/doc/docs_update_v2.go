@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var validCommandsV2 = map[string]bool{

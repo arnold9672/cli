@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func assertValidationError(t *testing.T, err error, wantSubstr string) {

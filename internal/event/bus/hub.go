@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 // exclusiveCleanupWaitTimeout bounds how long TryRegisterExclusive waits for an

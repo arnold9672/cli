@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 func TestHubDroppedCountIncrements(t *testing.T) {

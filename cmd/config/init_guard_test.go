@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func TestGuardAgentWorkspace_LocalAllows(t *testing.T) {

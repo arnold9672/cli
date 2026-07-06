@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	extcs "github.com/larksuite/cli/extension/contentsafety"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 type csTestProvider struct {

@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 // PrintJson prints data as formatted JSON to w.

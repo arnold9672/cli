@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 func TestAppsDBEnvCreate_WithYesPostsSyncData(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
 )
 
 // currentCLIVersion returns the running binary's version, redirectable

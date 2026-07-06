@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/lockfile"
+	"code.byted.org/lark_search/larksuite-cli/internal/lockfile"
 )
 
 func TestWritePIDFile_WritesPIDAndTimestamp(t *testing.T) {

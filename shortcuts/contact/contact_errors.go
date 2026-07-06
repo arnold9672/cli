@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 const contactFanoutRetryHint = "retry the command; if it persists, narrow --queries to a single term to isolate the failing input"

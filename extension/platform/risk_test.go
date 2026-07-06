@@ -6,7 +6,7 @@ package platform_test
 import (
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 func TestRisk_Rank_orderedTaxonomy(t *testing.T) {

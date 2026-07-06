@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
-	shortcutTypes "github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts"
+	shortcutTypes "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ── Data types ────────────────────────────────────────────────────────

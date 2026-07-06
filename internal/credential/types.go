@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/i18n"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
 )
 
 // Account is the credential-layer view of the active runtime account.

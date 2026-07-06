@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
 )
 
 func TestConfigureQualityGateEnvironmentForcesDeterministicRegistry(t *testing.T) {

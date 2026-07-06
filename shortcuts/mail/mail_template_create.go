@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var MailTemplateCreate = common.Shortcut{

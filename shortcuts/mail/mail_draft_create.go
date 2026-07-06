@@ -9,10 +9,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
-	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
-	"github.com/larksuite/cli/shortcuts/mail/lint"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/emlbuilder"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/lint"
 )
 
 // draftCreateInput bundles all +draft-create user flags into a single

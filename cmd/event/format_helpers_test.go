@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func TestWriteStopJSON_ShapeAndEmpty(t *testing.T) {

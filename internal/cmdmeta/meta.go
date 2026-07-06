@@ -31,7 +31,7 @@ package cmdmeta
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // Source identifies how a command entered the repository-owned command tree.

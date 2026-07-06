@@ -17,13 +17,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/busdiscover"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
-	"github.com/larksuite/cli/internal/event/transport"
-	"github.com/larksuite/cli/internal/lockfile"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busdiscover"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/source"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/lockfile"
 )
 
 const (

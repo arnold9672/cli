@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
 )
 
 func TestBuildDraftSendOutputIncludesOptionalFields(t *testing.T) {

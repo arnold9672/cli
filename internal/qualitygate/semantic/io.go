@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/larksuite/cli/internal/qualitygate/facts"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 var (

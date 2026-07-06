@@ -20,7 +20,7 @@ import (
 // The test exercises collectSubtypeConsts and ResolveSubtypeIdent directly
 // against a synthetic types.Package. A full ScanRepo integration test would
 // need a synthetic go.mod whose module path happens to be
-// github.com/larksuite/cli — which would conflict with the real repo — so
+// code.byted.org/lark_search/larksuite-cli — which would conflict with the real repo — so
 // we exercise the resolution helpers directly here.
 func TestTypedScope_RejectsForeignSubtypeConst(t *testing.T) {
 	// Synthesize what go/packages would have produced: an errs package

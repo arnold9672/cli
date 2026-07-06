@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/hook"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
 )
 
 // PluginInfo is the metadata of a successfully-installed plugin,

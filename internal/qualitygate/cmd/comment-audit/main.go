@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/qualitygate/publiccontent"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/publiccontent"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 type eventPayload struct {

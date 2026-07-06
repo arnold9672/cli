@@ -14,9 +14,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/charcheck"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/charcheck"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // defaultInitBranch is the fixed remote branch +init checks out after clone.

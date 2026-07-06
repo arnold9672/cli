@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ─── lark_sheet_read_data ─────────────────────────────────────────────

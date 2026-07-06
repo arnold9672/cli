@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // slidesMediaParentType is the only parent_type the slides backend accepts for

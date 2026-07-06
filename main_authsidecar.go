@@ -6,6 +6,6 @@
 package main
 
 import (
-	_ "github.com/larksuite/cli/extension/credential/sidecar" // activate sidecar credential provider
-	_ "github.com/larksuite/cli/extension/transport/sidecar"  // activate sidecar transport interceptor
+	_ "code.byted.org/lark_search/larksuite-cli/extension/credential/sidecar" // activate sidecar credential provider
+	_ "code.byted.org/lark_search/larksuite-cli/extension/transport/sidecar"  // activate sidecar transport interceptor
 )

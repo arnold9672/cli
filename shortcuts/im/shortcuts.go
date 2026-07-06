@@ -3,7 +3,7 @@
 
 package im
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // Shortcuts returns all im shortcuts.
 func Shortcuts() []common.Shortcut {

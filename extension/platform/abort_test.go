@@ -8,7 +8,7 @@ import (
 	"io/fs"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 func TestAbortError_messageFormats(t *testing.T) {

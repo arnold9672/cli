@@ -9,8 +9,8 @@ import (
 	"sort"
 	"sync"
 
-	extcs "github.com/larksuite/cli/extension/contentsafety"
-	"github.com/larksuite/cli/internal/core"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // regexProvider implements extcs.Provider using regex rules from config file.

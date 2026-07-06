@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const dbEnvCreateHint = "verify --app-id is correct; if the app is already multi-env this is a conflict — inspect current tables with `lark-cli apps +db-table-list --app-id <app_id> --env dev`"

@@ -3,7 +3,7 @@
 
 package errscontract
 
-import "github.com/larksuite/cli/lint/lintapi"
+import "code.byted.org/lark_search/larksuite-cli/lint/lintapi"
 
 // Re-export the shared types so existing rule code reads Action /
 // Violation locally. The canonical declarations live in lintapi.

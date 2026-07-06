@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 func TestVCKeys_ProcessedMeetingLifecycleRegistered(t *testing.T) {

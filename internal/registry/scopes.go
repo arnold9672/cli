@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/apicatalog"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // methodsForProjects walks the runtime catalog once and returns the methods in

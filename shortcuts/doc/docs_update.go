@@ -6,7 +6,7 @@ package doc
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // v1UpdateFlags returns hidden parse-only compatibility flags for old v1 commands.

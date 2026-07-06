@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
 )
 
 func TestManifestExportWritesManifestAndCommandIndex(t *testing.T) {

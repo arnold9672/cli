@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // RuntimeDirFunc returns the workspace-aware config directory.

@@ -3,7 +3,7 @@
 
 package common
 
-import "github.com/larksuite/cli/internal/util"
+import "code.byted.org/lark_search/larksuite-cli/internal/util"
 
 // GetString safely extracts a string from a nested map path.
 // Usage: GetString(data, "user", "name") is equivalent to

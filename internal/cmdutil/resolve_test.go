@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
 
 func TestResolveInput_Stdin(t *testing.T) {

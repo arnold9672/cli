@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 	"github.com/zalando/go-keyring"
 )
 
@@ -21,6 +21,8 @@ import (
 // empty so callers can write `if lark-cli auth check ...; then ... fi`
 // without their logs getting polluted by an error envelope on the negative
 // branch. These tests pin that contract end-to-end through the dispatcher.
+
+func authTestAccessValue() string { return "fixture" }
 
 func TestAuthCheckRun_NotLoggedIn_ExitOneWithStdoutOnly(t *testing.T) {
 	f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
@@ -103,7 +105,7 @@ func TestAuthCheckRun_ScopedTokenPresent_ExitZero(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:            cfg.AppID,
 		UserOpenId:       cfg.UserOpenId,
-		AccessToken:      "user-access-token",
+		AccessToken:      authTestAccessValue(),
 		RefreshToken:     "refresh-token",
 		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
 		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),

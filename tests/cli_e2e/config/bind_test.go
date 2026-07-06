@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	clie2e "code.byted.org/lark_search/larksuite-cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"

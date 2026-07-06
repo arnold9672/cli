@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 func TestDryRunAPI_SingleGET(t *testing.T) {

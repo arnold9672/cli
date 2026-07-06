@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // CompleteTask marks a task as complete and skips the PATCH call if already completed.

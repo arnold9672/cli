@@ -52,7 +52,7 @@ func TestQualityGateCoreDoesNotDependOnCLIRuntime(t *testing.T) {
 func TestManifestExportIsTheOnlyRuntimeCollector(t *testing.T) {
 	root := repoRoot(t)
 	deps := goListDeps(t, root, false, "./internal/qualitygate/cmd/manifest-export")
-	if !containsDep(deps, "github.com/larksuite/cli/cmd") {
+	if !containsDep(deps, "code.byted.org/lark_search/larksuite-cli/cmd") {
 		t.Fatal("manifest-export should be the explicit command-tree collector")
 	}
 }

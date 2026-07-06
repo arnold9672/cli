@@ -17,7 +17,7 @@ import (
 // resolved object belongs to this exact package — selector-name matching
 // alone would have falsely accepted an identically-named constant from a
 // foreign package.
-const errsPkgPath = "github.com/larksuite/cli/errs"
+const errsPkgPath = "code.byted.org/lark_search/larksuite-cli/errs"
 
 // TypedScope captures the workspace-wide type information used by CheckDeclaredSubtype's
 // typed-resolution pass. The zero value is a no-op (typed pass disabled);

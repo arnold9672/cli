@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func TestBuildSetAncestorBody(t *testing.T) {

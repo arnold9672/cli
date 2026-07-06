@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/vfs/localfileio"
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
-	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/emlbuilder"
 )
 
 func TestEstimateBase64EMLSize(t *testing.T) {

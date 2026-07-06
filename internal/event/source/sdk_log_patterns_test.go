@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 // Samples preserve the real SDK shape ("<verb> to <url>[conn_id=...]" — no space before bracket).

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 	"github.com/zalando/go-keyring"
 )
 
@@ -171,7 +171,7 @@ func TestAuthLogoutRun_RevokesTokenAndClearsLocalState(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:        "cli_test",
 		UserOpenId:   "ou_user",
-		AccessToken:  "user-access-token",
+		AccessToken:  authTestAccessValue(),
 		RefreshToken: "user-refresh-token",
 	}); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
@@ -242,7 +242,7 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:       "cli_test",
 		UserOpenId:  "ou_user",
-		AccessToken: "user-access-token",
+		AccessToken: authTestAccessValue(),
 	}); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
@@ -265,7 +265,7 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 			}
 			return values.Get("client_id") == "cli_test" &&
 				values.Get("client_secret") == "secret" &&
-				values.Get("token") == "user-access-token" &&
+				values.Get("token") == authTestAccessValue() &&
 				values.Get("token_type_hint") == "access_token"
 		},
 	})
@@ -312,7 +312,7 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
 		AppId:        "cli_test",
 		UserOpenId:   "ou_user",
-		AccessToken:  "user-access-token",
+		AccessToken:  authTestAccessValue(),
 		RefreshToken: "user-refresh-token",
 	}); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)

@@ -10,9 +10,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
-	"github.com/larksuite/cli/shortcuts/mail/ics"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/ics"
 )
 
 // MailDraftEdit is the `+draft-edit` shortcut: update an existing draft

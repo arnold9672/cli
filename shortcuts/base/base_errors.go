@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/util"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/util"
 )
 
 func handleBaseAPIResult(result interface{}, err error, action string) (map[string]interface{}, error) {

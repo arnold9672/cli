@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/selfupdate"
+	"code.byted.org/lark_search/larksuite-cli/internal/selfupdate"
 )
 
 func TestParseSkillsListIgnoresUnsupportedFormat(t *testing.T) {

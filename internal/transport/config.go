@@ -23,10 +23,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/larksuite/cli/internal/binding"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/binding"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // ConfigFileName is the fixed config file name under core.GetConfigDir().

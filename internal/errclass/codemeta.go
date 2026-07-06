@@ -6,7 +6,7 @@ package errclass
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // CodeMeta is the classification metadata attached to a Lark numeric code.

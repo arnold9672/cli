@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // Workspace identifies a config isolation context.

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // The affordance source is a narrow, fixed markdown subset (see src/*.md):

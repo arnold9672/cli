@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/bus"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/source"
-	"github.com/larksuite/cli/internal/event/testutil"
-	"github.com/larksuite/cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/bus"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/source"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/testutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
 )
 
 type integTestOut struct{ A string }

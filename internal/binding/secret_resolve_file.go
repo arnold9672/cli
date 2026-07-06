@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // SingleValueFileRefID is the required ref.ID for singleValue file mode

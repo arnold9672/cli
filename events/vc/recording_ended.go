@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // VCRecordingEndedOutput is the flattened shape for vc.recording.recording_ended_v1.

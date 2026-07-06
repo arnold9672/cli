@@ -9,7 +9,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 const preShutdownAckTimeout = 2 * time.Second

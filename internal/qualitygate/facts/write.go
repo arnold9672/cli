@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 func (f Facts) WriteFile(path string) error {

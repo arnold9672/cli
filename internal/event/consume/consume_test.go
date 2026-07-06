@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
 )
 
 // fakeRT is a minimal event.APIClient mock.

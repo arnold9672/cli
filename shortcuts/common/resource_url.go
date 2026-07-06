@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // BuildResourceURL returns a brand-standard, user-facing URL for a freshly

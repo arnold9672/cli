@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 //go:embed scope_priorities.json scope_overrides.json

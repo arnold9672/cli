@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/larksuite/cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 )
 
 // unsetEnv clears key for the duration of the test and restores its original value.

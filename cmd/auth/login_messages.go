@@ -3,7 +3,7 @@
 
 package auth
 
-import "github.com/larksuite/cli/internal/i18n"
+import "code.byted.org/lark_search/larksuite-cli/internal/i18n"
 
 type loginMsg struct {
 	// Interactive UI (login_interactive.go)

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 // Route holds a compiled regex pattern and its target output directory.

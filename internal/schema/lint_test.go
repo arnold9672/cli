@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/internal/apicatalog"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
 )
 
 // validEnvelope builds a baseline valid envelope used as a starting point in

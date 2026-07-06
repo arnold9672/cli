@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 const (

@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const minutesSummaryMarkdownTip = "Summary accepts any text; unsupported Markdown is saved but may display as literal raw text in Minutes. For best rendering, prefer plain text, line breaks, headings (#, ##, ###), bold (**text**), and lists (-, *, or 1.)."

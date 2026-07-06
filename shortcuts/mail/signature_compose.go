@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
-	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
-	"github.com/larksuite/cli/shortcuts/mail/signature"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/emlbuilder"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/signature"
 )
 
 // signatureFlag is the common flag definition for --signature-id, shared by all compose shortcuts.

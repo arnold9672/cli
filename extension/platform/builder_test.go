@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // recorder Registrar captures everything a builder schedules so the

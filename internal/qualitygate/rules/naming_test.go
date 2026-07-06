@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	qallowlist "github.com/larksuite/cli/internal/qualitygate/allowlist"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/report"
+	qallowlist "code.byted.org/lark_search/larksuite-cli/internal/qualitygate/allowlist"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
 )
 
 func TestFlagNamingRejectsNewUnderscore(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/mail/lint"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/lint"
 )
 
 // jsonDecoderUnmarshal is a thin alias used by helpers in this file to keep

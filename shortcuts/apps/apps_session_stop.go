@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const sessionStopHint = "verify --app-id and --session-id are correct (list sessions with `lark-cli apps +session-list --app-id <app_id>`); --turn-id must be the latest turn from `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>`"

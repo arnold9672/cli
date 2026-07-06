@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const secretKeyPrefix = "appsecret:"

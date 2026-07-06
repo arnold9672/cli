@@ -7,16 +7,16 @@ import (
 	"context"
 	"fmt"
 
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
 	"github.com/charmbracelet/huh"
-	"github.com/larksuite/cli/internal/build"
 	qrcode "github.com/skip2/go-qrcode"
 
-	"github.com/larksuite/cli/errs"
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/transport"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
 )
 
 // configInitResult holds the result of the interactive config init flow.

@@ -6,8 +6,8 @@ package wiki
 import (
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // wikiNodeURL returns the user-facing link for a wiki node. The create/copy

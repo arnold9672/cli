@@ -7,7 +7,7 @@ package minutes
 import (
 	"reflect"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 const (

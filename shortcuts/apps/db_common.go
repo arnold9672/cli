@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 // URL helpers for the db CLI commands.

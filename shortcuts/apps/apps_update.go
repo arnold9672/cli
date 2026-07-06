@@ -9,8 +9,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // AppsUpdate partially updates an app's name / description.

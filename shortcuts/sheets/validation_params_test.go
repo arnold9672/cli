@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // TestValidationParamMetadata locks the structured-param contract across the

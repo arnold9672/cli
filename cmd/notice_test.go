@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/deprecation"
+	"code.byted.org/lark_search/larksuite-cli/internal/deprecation"
 )
 
 // composePendingNotice must surface a deprecated-command alias under the

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event/busdiscover"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busdiscover"
 )
 
 func TestDiscoverAppIDs_OnlyLiveLockHolders(t *testing.T) {

@@ -12,14 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/i18n"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 type noopConfigKeychain struct{}

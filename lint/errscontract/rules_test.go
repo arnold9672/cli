@@ -54,7 +54,7 @@ func TestCheckProblemEmbed_AcceptsImportedEmbed(t *testing.T) {
 	// `errs.Problem` selector form: used by re-export packages.
 	src := `package alias
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type GoodError struct {
 	errs.Problem
@@ -133,7 +133,7 @@ var taskMap = map[int]any{}
 func TestCheckNoRegistrar_RejectsRegisterServiceMapInInternal(t *testing.T) {
 	src := `package auth
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func init() {
 	output.RegisterServiceMap("auth", nil)
@@ -246,7 +246,7 @@ func TestCheckDeclaredSubtype(t *testing.T) {
 		{
 			name: "named_const_selector_accepted",
 			src: `package x
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 var _ = struct{ Subtype errs.Subtype }{Subtype: errs.SubtypeMissingScope}
 `,
 			wantAction: "",
@@ -269,7 +269,7 @@ var _ = struct{ Subtype string }{Subtype: "my_custom_thing"}
 		{
 			name: "undeclared_via_cast_rejected",
 			src: `package x
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 var _ = struct{ Subtype errs.Subtype }{Subtype: errs.Subtype("custom_value")}
 `,
 			wantAction: ActionReject,
@@ -295,7 +295,7 @@ var _ = struct{ Subtype string }{Subtype: loc}
 		{
 			name: "dynamic_cast_warns",
 			src: `package x
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 func f(raw string) { _ = struct{ Subtype errs.Subtype }{Subtype: errs.Subtype(raw)} }
 `,
 			wantAction: ActionWarning,
@@ -335,7 +335,7 @@ func TestCheckDeclaredSubtype_DetectsPositionalCodeMetaLiteral(t *testing.T) {
 	}
 	src := `package output
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type CodeMeta struct {
 	Category  errs.Category
@@ -367,7 +367,7 @@ func TestCheckDeclaredSubtype_AcceptsPositionalCodeMetaLiteral(t *testing.T) {
 	}
 	src := `package output
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type CodeMeta struct {
 	Category  errs.Category
@@ -395,7 +395,7 @@ func TestCheckDeclaredSubtype_DetectsPositionalCodeMetaLiteralInSlice(t *testing
 	}
 	src := `package output
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type CodeMeta struct {
 	Category  errs.Category
@@ -426,7 +426,7 @@ func TestCheckDeclaredSubtype_WithNames_RejectsTypoedSelector(t *testing.T) {
 
 	// Typo'd selector — REJECT under strengthened rule.
 	src := `package x
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 var _ = struct{ Subtype errs.Subtype }{Subtype: errs.SubtypeBogus}
 `
 	v := CheckDeclaredSubtypeWithNames("x.go", src, allowlist, nameset)
@@ -453,7 +453,7 @@ func TestCheckDeclaredSubtype_WithNames_AcceptsDeclaredSelector(t *testing.T) {
 	allowlist := map[string]struct{}{"missing_scope": {}}
 	nameset := map[string]struct{}{"SubtypeMissingScope": {}}
 	src := `package x
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 var _ = struct{ Subtype errs.Subtype }{Subtype: errs.SubtypeMissingScope}
 `
 	v := CheckDeclaredSubtypeWithNames("x.go", src, allowlist, nameset)
@@ -600,7 +600,7 @@ func FooRegisterServiceMapBar(name string, _ interface{}) {}
 func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnDrivePath(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &output.ExitError{Code: 1}
@@ -628,7 +628,7 @@ func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnMigratedShortcutP
 		t.Run(path, func(t *testing.T) {
 			src := `package migrated
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &output.ExitError{Code: 1}
@@ -651,7 +651,7 @@ func boom() error {
 func TestCheckNoLegacyEnvelopeLiteral_RejectsErrDetailLiteralOnDrivePath(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() *output.ErrDetail {
 	return &output.ErrDetail{Code: 7}
@@ -670,7 +670,7 @@ func TestCheckNoLegacyEnvelopeLiteral_AllowsErrBareCallOnDrivePath(t *testing.T)
 	// output.ErrBare(...) is a CallExpr, not a CompositeLit — must NOT fire.
 	src := `package drive
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return output.ErrBare(output.ExitAPI)
@@ -694,7 +694,7 @@ func TestCheckNoLegacyEnvelopeLiteral_FiresOnAnyPath(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			src := `package other
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &output.ExitError{Code: 1}
@@ -714,7 +714,7 @@ func boom() error {
 func TestCheckNoLegacyEnvelopeLiteral_SkipsTestFiles(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &output.ExitError{Code: 1}
@@ -732,7 +732,7 @@ func boom() error {
 func TestCheckNoLegacyEnvelopeLiteral_RejectsAliasedImport(t *testing.T) {
 	src := `package drive
 
-import legacy "github.com/larksuite/cli/internal/output"
+import legacy "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &legacy.ExitError{Code: 1}
@@ -756,7 +756,7 @@ func boom() error {
 func TestCheckNoLegacyEnvelopeLiteral_NormalImportStillRejected(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/internal/output"
+import "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &output.ExitError{Code: 1}
@@ -773,7 +773,7 @@ func boom() error {
 func TestCheckNoLegacyEnvelopeLiteral_ErrBareAliasedStillAllowed(t *testing.T) {
 	src := `package drive
 
-import legacy "github.com/larksuite/cli/internal/output"
+import legacy "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return legacy.ErrBare(legacy.ExitAPI)
@@ -791,7 +791,7 @@ func boom() error {
 func TestCheckNoLegacyEnvelopeLiteral_RejectsDotImport(t *testing.T) {
 	src := `package drive
 
-import . "github.com/larksuite/cli/internal/output"
+import . "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 func boom() error {
 	return &ExitError{Code: 1}
@@ -827,7 +827,7 @@ func boom() error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnDrivePath(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
@@ -849,7 +849,7 @@ func boom(runtime *common.RuntimeContext) error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnTaskPath(t *testing.T) {
 	src := `package task
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
@@ -871,7 +871,7 @@ func boom(runtime *common.RuntimeContext) error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsDoAPIJSONWithLogIDOnDrivePath(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.DoAPIJSONWithLogID("POST", "/x", nil, nil)
@@ -930,7 +930,7 @@ func TestCheckNoLegacyRuntimeAPICall_FiresOnAnyCommonImportingPath(t *testing.T)
 		t.Run(path, func(t *testing.T) {
 			src := `package contact
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
@@ -1012,7 +1012,7 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 			t.Run(path+"_"+helper, func(t *testing.T) {
 				src := `package migrated
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 common.` + helper + `()
@@ -1036,7 +1036,7 @@ common.` + helper + `()
 func TestCheckNoLegacyCommonHelperCall_RejectsDangerousCharsOnCalendarPath(t *testing.T) {
 	src := `package calendar
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	common.RejectDangerousChars("--summary", "x")
@@ -1057,7 +1057,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_CoversDocPathWithAliasAndFunctionValue(t *testing.T) {
 	src := `package migrated
 
-import c "github.com/larksuite/cli/shortcuts/common"
+import c "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	f := c.FlagErrorf
@@ -1074,7 +1074,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_CoversSheetsPathWithAliasAndFunctionValue(t *testing.T) {
 	src := `package migrated
 
-import c "github.com/larksuite/cli/shortcuts/common"
+import c "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	f := c.FlagErrorf
@@ -1091,7 +1091,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_CoversSlidesPathWithAliasAndFunctionValue(t *testing.T) {
 	src := `package migrated
 
-import c "github.com/larksuite/cli/shortcuts/common"
+import c "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	f := c.FlagErrorf
@@ -1108,7 +1108,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_CoversMarkdownPathWithAliasAndFunctionValue(t *testing.T) {
 	src := `package migrated
 
-import c "github.com/larksuite/cli/shortcuts/common"
+import c "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	f := c.FlagErrorf
@@ -1125,7 +1125,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_CoversWikiPathWithAliasAndFunctionValue(t *testing.T) {
 	src := `package migrated
 
-import c "github.com/larksuite/cli/shortcuts/common"
+import c "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	f := c.FlagErrorf
@@ -1150,7 +1150,7 @@ func TestCheckNoLegacyCommonHelperCall_FiresOnAnyPath(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			src := `package contact
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	common.FlagErrorf("relapse")
@@ -1182,7 +1182,7 @@ func TestCheckNoLegacyCommonHelperCall_RejectsReintroducedUploadAndCallAPIHelper
 		t.Run(tc.helper, func(t *testing.T) {
 			src := `package drive
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	common.` + tc.helper + `()
@@ -1202,7 +1202,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_AllowsTypedHelpersOnMigratedPath(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	common.ValidationErrorf("typed")
@@ -1221,7 +1221,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_RejectsAliasedImport(t *testing.T) {
 	src := `package drive
 
-import c "github.com/larksuite/cli/shortcuts/common"
+import c "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	c.FlagErrorf("legacy")
@@ -1236,7 +1236,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_RejectsDotImport(t *testing.T) {
 	src := `package drive
 
-import . "github.com/larksuite/cli/shortcuts/common"
+import . "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() {
 	FlagErrorf("legacy")
@@ -1251,7 +1251,7 @@ func boom() {
 func TestCheckNoLegacyCommonHelperCall_RejectsFunctionValueReference(t *testing.T) {
 	src := `package drive
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 func boom() error {
 	f := common.FlagErrorf
@@ -1271,7 +1271,7 @@ func TestCheckNoLegacyRuntimeAPICall_SkipsNonCommonReceiver(t *testing.T) {
 	// helper and must not fire.
 	src := `package vc
 
-import "github.com/larksuite/cli/internal/event"
+import "code.byted.org/lark_search/larksuite-cli/internal/event"
 
 func boom(rt event.APIClient) error {
 	_, err := rt.CallAPI(nil, "POST", "/x", nil)

@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func NewCmdList(f *cmdutil.Factory) *cobra.Command {

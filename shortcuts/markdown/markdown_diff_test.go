@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func TestMarkdownDiffRejectsUnsupportedFormat(t *testing.T) {

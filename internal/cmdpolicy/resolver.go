@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/larksuite/cli/extension/platform"
-	pyaml "github.com/larksuite/cli/internal/cmdpolicy/yaml"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	pyaml "code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy/yaml"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 type SourceKind string

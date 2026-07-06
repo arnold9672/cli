@@ -6,7 +6,7 @@ package sheets
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ─── flag definitions, sourced from sheet-skill-spec ───────────────────

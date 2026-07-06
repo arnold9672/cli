@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
 )
 
 const readTimeout = 5 * time.Second // matches protocol.WriteTimeout

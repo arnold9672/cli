@@ -6,7 +6,7 @@ package cmdpolicy
 import (
 	"sync"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // ActivePolicy is the resolved user-layer policy after applyUserPolicyPruning

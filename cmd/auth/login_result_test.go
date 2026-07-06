@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // TestHandleLoginScopeIssue_FailedJSON_PreservesScopeTriple asserts that the

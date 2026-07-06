@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
 )
 
 type Issuer interface {

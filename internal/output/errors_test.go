@@ -7,7 +7,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // failingWriter writes up to limit bytes then returns io.ErrShortWrite on

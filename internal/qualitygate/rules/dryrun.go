@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/qualitygate/facts"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/qualitygate/skillscan"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/skillscan"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const dryRunTimeout = 20 * time.Second

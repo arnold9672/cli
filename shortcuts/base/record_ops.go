@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const maxRecordSelectionCount = 200

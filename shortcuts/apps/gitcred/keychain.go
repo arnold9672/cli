@@ -4,8 +4,8 @@
 package gitcred
 
 import (
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 )
 
 type SecretStore struct {

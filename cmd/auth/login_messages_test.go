@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
 )
 
 func TestGetLoginMsg_Zh(t *testing.T) {

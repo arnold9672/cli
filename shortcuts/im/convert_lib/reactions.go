@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // reactionsBatchQueryMaxQueries is the server-side hard limit on queries[]

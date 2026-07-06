@@ -9,7 +9,7 @@ import (
 
 	"github.com/itchyny/gojq"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // CompileJQ compiles once for hot-path reuse; exported so callers can preflight before side effects.

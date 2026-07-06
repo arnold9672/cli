@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
-	internalplatform "github.com/larksuite/cli/internal/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	internalplatform "code.byted.org/lark_search/larksuite-cli/internal/platform"
 )
 
 // happyPlugin is a textbook plugin: declares Capabilities, calls a few

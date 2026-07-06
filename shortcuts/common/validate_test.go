@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
 )
 

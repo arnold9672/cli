@@ -6,7 +6,7 @@ package sheets
 import (
 	"testing"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // TestFlagDefs_EmbedParses asserts the embedded flag-defs.json blob is valid

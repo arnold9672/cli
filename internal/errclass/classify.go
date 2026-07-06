@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // ClassifyContext is the contextual data BuildAPIError uses to populate

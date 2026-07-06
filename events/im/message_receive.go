@@ -7,8 +7,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/larksuite/cli/internal/event"
-	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	convertlib "code.byted.org/lark_search/larksuite-cli/shortcuts/im/convert_lib"
 )
 
 // ImMessageReceiveOutput is the flattened shape for im.message.receive_v1; `desc` tags drive the reflected schema.

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/vfs"
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
 
 func ReadFile(path, kind string) (Manifest, error) {

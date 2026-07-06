@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const waiverPath = "internal/qualitygate/config/semantic/waivers.txt"

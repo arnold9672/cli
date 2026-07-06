@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // Source records whether a catalog includes the remote overlay. It is carried

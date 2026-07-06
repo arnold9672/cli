@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const dialTimeout = 5 * time.Second // matches winio.DialPipe for cross-platform symmetry

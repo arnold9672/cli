@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const baseCreateHint = "Tip: Base created the platform default first-table schema. To configure the initial table schema during +base-create, pass both --table-name and --fields."

@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // VCParticipantMeetingJoinedOutput is the flattened shape for vc.meeting.participant_meeting_joined_v1.

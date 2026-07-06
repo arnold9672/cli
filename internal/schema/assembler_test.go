@@ -11,10 +11,10 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/larksuite/cli/internal/affordance"
-	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/internal/affordance"
+	"code.byted.org/lark_search/larksuite-cli/internal/apicatalog"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
 )
 
 // TestMain isolates registry-backed tests from any host ~/.lark-cli cache so

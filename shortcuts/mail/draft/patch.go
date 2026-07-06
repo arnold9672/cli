@@ -12,9 +12,9 @@ import (
 	"regexp"
 	"strings"
 
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/filecheck"
 	"github.com/google/uuid"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
 // imgSrcRegexp matches <img ... src="value" ...> and captures the src value.

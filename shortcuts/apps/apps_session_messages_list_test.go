@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 const sessionMessagesListURL = "/open-apis/spark/v1/apps/app_x/sessions/sess_1/turns/turn_9/reply_message"

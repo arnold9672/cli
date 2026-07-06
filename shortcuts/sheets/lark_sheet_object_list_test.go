@@ -6,7 +6,7 @@ package sheets
 import (
 	"testing"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // TestObjectListShortcuts_DryRun covers all 7 object-list shortcuts.

@@ -6,7 +6,7 @@ package mail
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // MailMessage is the `+message` shortcut: fetch full content of one email

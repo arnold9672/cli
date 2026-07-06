@@ -12,12 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/hook"
-	internalplatform "github.com/larksuite/cli/internal/platform"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
+	internalplatform "code.byted.org/lark_search/larksuite-cli/internal/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // userPolicyFileName is the conventional filename for the user-layer Rule.

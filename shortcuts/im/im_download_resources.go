@@ -6,8 +6,8 @@ package im
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
-	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	convertlib "code.byted.org/lark_search/larksuite-cli/shortcuts/im/convert_lib"
 )
 
 // imResourceDownloadDir is the fixed sub-directory under the current working

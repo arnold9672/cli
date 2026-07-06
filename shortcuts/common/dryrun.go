@@ -3,7 +3,7 @@
 
 package common
 
-import "github.com/larksuite/cli/internal/cmdutil"
+import "code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 
 // Type aliases so all existing shortcut code continues to use common.DryRunAPI
 // without any changes. The real implementation lives in internal/cmdutil.

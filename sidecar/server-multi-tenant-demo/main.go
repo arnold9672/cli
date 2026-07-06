@@ -6,7 +6,7 @@
 // Command sidecar-server-demo is a reference implementation of a sidecar
 // auth proxy server. It is NOT production-ready — integrators should
 // implement their own server conforming to the wire protocol defined in
-// github.com/larksuite/cli/sidecar.
+// code.byted.org/lark_search/larksuite-cli/sidecar.
 //
 // The demo reuses the lark-cli credential pipeline (keychain + config) to
 // resolve real tokens, so it only works on a machine that has been
@@ -29,12 +29,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
-	"github.com/larksuite/cli/sidecar"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 func main() {

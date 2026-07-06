@@ -4,7 +4,7 @@
 package cmdutil
 
 import (
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // RequireConfirmation constructs a typed *errs.ConfirmationRequiredError

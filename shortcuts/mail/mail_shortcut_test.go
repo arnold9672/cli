@@ -14,11 +14,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zalando/go-keyring"
 
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func mailTestConfig() *core.CliConfig {
@@ -31,6 +31,8 @@ func mailTestConfig() *core.CliConfig {
 	}
 }
 
+func mailTestAccessValue() string { return "fixture" }
+
 func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	keyring.MockInit() // use in-memory keyring to avoid macOS keychain popups
@@ -40,7 +42,7 @@ func mailShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *by
 	token := &auth.StoredUAToken{
 		UserOpenId:       cfg.UserOpenId,
 		AppId:            cfg.AppID,
-		AccessToken:      "test-user-access-token",
+		AccessToken:      mailTestAccessValue(),
 		RefreshToken:     "test-refresh-token",
 		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
 		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),

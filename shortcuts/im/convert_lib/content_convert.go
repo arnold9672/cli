@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ContentConverter defines the interface for converting a message type's raw content to human-readable text.

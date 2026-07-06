@@ -3,7 +3,7 @@
 
 package config
 
-import "github.com/larksuite/cli/internal/i18n"
+import "code.byted.org/lark_search/larksuite-cli/internal/i18n"
 
 // bindMsg holds all TUI text for config bind, supporting zh/en via --lang.
 //

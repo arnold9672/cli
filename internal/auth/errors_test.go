@@ -6,7 +6,7 @@ package auth
 import (
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func TestIsNeedUserAuthorizationError(t *testing.T) {

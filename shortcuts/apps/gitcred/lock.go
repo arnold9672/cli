@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/lockfile"
-	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // git credential locks live under CLI config dir and are not user file I/O.
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/lockfile"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs" //nolint:depguard // git credential locks live under CLI config dir and are not user file I/O.
 )
 
 var urlLocks sync.Map

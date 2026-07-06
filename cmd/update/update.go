@@ -10,17 +10,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/selfupdate"
-	"github.com/larksuite/cli/internal/skillscheck"
-	"github.com/larksuite/cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/selfupdate"
+	"code.byted.org/lark_search/larksuite-cli/internal/skillscheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
 )
 
 const (
-	repoURL         = "https://github.com/larksuite/cli"
+	repoURL         = "https://code.byted.org/lark_search/larksuite-cli"
 	maxNpmOutput    = 2000
 	maxStderrDetail = 500
 	osWindows       = "windows"

@@ -6,8 +6,8 @@ package im
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ImFeedShortcutCreate provides the +feed-shortcut-create shortcut for adding

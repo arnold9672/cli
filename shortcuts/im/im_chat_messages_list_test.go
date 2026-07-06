@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // newMsgListTestRT registers chat-id (so the builder has a container) plus the

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // safeIDChars strips path-traversal chars from app IDs.

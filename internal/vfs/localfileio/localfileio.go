@@ -8,8 +8,8 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // Provider is the default fileio.Provider backed by the local filesystem.

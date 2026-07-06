@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/sidecar"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 // proxyHandler handles HTTP requests from sandbox CLI instances.

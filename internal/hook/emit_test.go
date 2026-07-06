@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // A Startup handler returning a regular error must surface as a typed

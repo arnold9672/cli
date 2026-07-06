@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/internal/binding"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/binding"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // applyExtraRootCA augments t with an additional PEM bundle used for configured proxy

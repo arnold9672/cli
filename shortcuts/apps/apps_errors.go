@@ -6,9 +6,9 @@ package apps
 import (
 	"errors"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
 )
 
 func appsValidationError(format string, args ...any) *errs.ValidationError {

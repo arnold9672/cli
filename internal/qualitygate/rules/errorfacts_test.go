@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/larksuite/cli/internal/qualitygate/facts"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 func TestCollectErrorFactsMarksHelperBareErrorAsNonBoundaryWarning(t *testing.T) {
@@ -70,8 +70,8 @@ func TestCollectRepoErrorFactsAnnotatesShortcutBoundaryScope(t *testing.T) {
 import (
 	"context"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var WikiMove = common.Shortcut{
@@ -120,7 +120,7 @@ func TestCollectErrorFactsTreatsCommonValidationErrorfAsStructuredBoundary(t *te
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var ContactGetUser = common.Shortcut{
@@ -159,7 +159,7 @@ func TestCollectErrorFactsTracksCommonTypedValidatorMultiReturnBoundary(t *testi
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var MinutesSearch = common.Shortcut{
@@ -193,8 +193,8 @@ func TestCollectErrorFactsTreatsDomainValidationHelperAsStructuredBoundary(t *te
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func baseFlagErrorf(format string, args ...any) error {
@@ -236,8 +236,8 @@ func TestCollectErrorFactsTracksDomainValidateHelperMultiReturnBoundary(t *testi
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func baseValidationErrorf(format string, args ...any) error {
@@ -283,7 +283,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func parseRoleName(name string) (string, error) {
@@ -322,7 +322,7 @@ func TestCollectRepoErrorFactsUsesPackageStructuredHelpersAcrossFiles(t *testing
 	}
 	helperSrc := `package base
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 func baseFlagErrorf(format string, args ...any) error {
 	return baseValidationErrorf(format, args...)
@@ -340,7 +340,7 @@ func baseValidationErrorf(format string, args ...any) error {
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseRoleCreate = common.Shortcut{
@@ -394,7 +394,7 @@ func TestCollectRepoErrorFactsAnnotatesCobraRunEBoundaryScope(t *testing.T) {
 	src := `package cmd
 
 import (
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -481,7 +481,7 @@ func TestCollectRepoErrorFactsAnnotatesReturnedLocalStructuredErrorBoundary(t *t
 	src := `package cmd
 
 import (
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -528,8 +528,8 @@ func TestCollectRepoErrorFactsAnnotatesFluentStructuredErrorBoundary(t *testing.
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var WikiMove = common.Shortcut{
@@ -575,8 +575,8 @@ func TestCollectRepoErrorFactsDoesNotMarkSameNameMethodBoundary(t *testing.T) {
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 type executor struct{}
@@ -624,8 +624,8 @@ func TestCollectRepoErrorFactsAnnotatesVariableFluentHintBoundary(t *testing.T) 
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var WikiMove = common.Shortcut{
@@ -685,7 +685,7 @@ func helper(base customError) error {
 func TestCollectErrorFactsDoesNotLeakStructuredVarsAcrossFunctions(t *testing.T) {
 	src := `package demo
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 func other() error {
 	base := errs.NewValidationError("missing token")
@@ -705,7 +705,7 @@ func helper(base customError) error {
 func TestCollectErrorFactsDoesNotLeakStructuredVarsAcrossBlocks(t *testing.T) {
 	src := `package demo
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 func helper(base customError) error {
 	if true {
@@ -735,8 +735,8 @@ func TestCollectRepoErrorFactsAnnotatesVariableFluentHintThroughWrapper(t *testi
 import (
 	"context"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var WikiMove = common.Shortcut{

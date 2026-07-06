@@ -30,8 +30,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/larksuite/cli/lint/errscontract"
-	"github.com/larksuite/cli/lint/lintapi"
+	"code.byted.org/lark_search/larksuite-cli/lint/errscontract"
+	"code.byted.org/lark_search/larksuite-cli/lint/lintapi"
 )
 
 // scanner is the contract every lint domain implements. New domains drop in

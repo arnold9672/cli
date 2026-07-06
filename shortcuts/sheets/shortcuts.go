@@ -4,7 +4,7 @@
 package sheets
 
 import (
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

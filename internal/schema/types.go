@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // Envelope is the MCP Tool spec contract for a single API method command.

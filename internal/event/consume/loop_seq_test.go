@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 // Mirrors the inline gap-detection logic from consumeLoop's reader; keep in sync with loop.go.

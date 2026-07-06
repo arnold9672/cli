@@ -7,7 +7,7 @@ package im
 import (
 	"reflect"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // Keys returns all IM-domain EventKey definitions.

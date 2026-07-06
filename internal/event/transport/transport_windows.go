@@ -13,7 +13,7 @@ import (
 
 	"github.com/Microsoft/go-winio"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 const pipeBufferSize = 65536 // per-direction; one event payload always fits

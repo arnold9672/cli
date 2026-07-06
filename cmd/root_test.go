@@ -13,17 +13,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/cmd/api"
-	"github.com/larksuite/cli/cmd/auth"
-	cmdconfig "github.com/larksuite/cli/cmd/config"
-	"github.com/larksuite/cli/cmd/schema"
-	"github.com/larksuite/cli/errs"
-	internalauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/cmd/api"
+	"code.byted.org/lark_search/larksuite-cli/cmd/auth"
+	cmdconfig "code.byted.org/lark_search/larksuite-cli/cmd/config"
+	"code.byted.org/lark_search/larksuite-cli/cmd/schema"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	internalauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/deprecation"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -78,10 +78,10 @@ func TestPersistentPreRunE_ConfigSubcommands(t *testing.T) {
 func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	// The human skills-install guidance now lives in the root usage-template
 	// footer (below the command list), not in the agent-facing Long.
-	if !strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#agent-skills") {
+	if !strings.Contains(rootUsageTemplate, "https://code.byted.org/lark_search/larksuite-cli#agent-skills") {
 		t.Fatalf("root help footer should link to the README Agent Skills section, got:\n%s", rootUsageTemplate)
 	}
-	if strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#install-ai-agent-skills") {
+	if strings.Contains(rootUsageTemplate, "https://code.byted.org/lark_search/larksuite-cli#install-ai-agent-skills") {
 		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootUsageTemplate)
 	}
 }

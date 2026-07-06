@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 func TestConn_SenderWritesEvents(t *testing.T) {

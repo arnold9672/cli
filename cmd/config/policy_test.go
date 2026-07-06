@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 func newPolicyTestFactory() (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {

@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // OKRCycleDetail lists all objectives and their key results under a given OKR cycle.

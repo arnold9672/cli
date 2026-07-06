@@ -3,7 +3,7 @@
 
 package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 // taskCodeMeta holds task-service Lark code → CodeMeta mappings.
 // All Subtypes are framework-shared (errs.SubtypeXxx) — task does not declare

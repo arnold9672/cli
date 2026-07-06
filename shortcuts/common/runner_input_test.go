@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	_ "github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	_ "code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 	"github.com/spf13/cobra"
 )
 

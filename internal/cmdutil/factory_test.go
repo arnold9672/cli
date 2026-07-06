@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // newCmdWithAsFlag creates a cobra.Command with a --as string flag for testing.
@@ -237,6 +237,17 @@ func TestNewAPIClientWithConfig_NilIOStreams(t *testing.T) {
 	}
 	if ac == nil {
 		t.Fatal("expected non-nil APIClient")
+	}
+}
+
+func TestResolveSDKOpenBaseURL(t *testing.T) {
+	if got := resolveSDKOpenBaseURL(core.BrandFeishu, func(string) string { return "" }); got != "https://open.feishu.cn" {
+		t.Fatalf("default feishu open base URL = %q", got)
+	}
+	if got := resolveSDKOpenBaseURL(core.BrandFeishu, func(string) string {
+		return " https://open.feishu-pre.cn/ "
+	}); got != "https://open.feishu-pre.cn" {
+		t.Fatalf("overridden open base URL = %q", got)
 	}
 }
 

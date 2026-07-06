@@ -9,8 +9,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	extcs "github.com/larksuite/cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
 )
 
 // ScanResult holds the output of ScanForSafety.

@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // FetchTAT performs a single HTTP POST to mint a tenant access token via the

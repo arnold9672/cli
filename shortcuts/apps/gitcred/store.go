@@ -10,10 +10,10 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // git credential metadata is CLI config-dir state, not user file I/O.
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs" //nolint:depguard // git credential metadata is CLI config-dir state, not user file I/O.
 )
 
 type AppStorage interface {

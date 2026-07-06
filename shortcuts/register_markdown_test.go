@@ -6,7 +6,7 @@ package shortcuts
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
 

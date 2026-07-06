@@ -8,7 +8,7 @@ package selfupdate
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // PrepareSelfReplace renames the running .exe to .old so that npm's

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // PartialFailureError is the exit signal for a batch / multi-status command that

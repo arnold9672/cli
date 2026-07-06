@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdmeta"
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 func TestApply_writesAllFields(t *testing.T) {

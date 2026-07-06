@@ -91,7 +91,7 @@ func TestBareCommandErrorAcceptsReturnedLocalStructuredError(t *testing.T) {
 	src := `package cmd
 
 import (
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -169,7 +169,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var shortcut = common.Shortcut{

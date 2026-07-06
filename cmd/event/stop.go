@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/event/busctl"
-	"github.com/larksuite/cli/internal/event/busdiscover"
-	"github.com/larksuite/cli/internal/event/transport"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busctl"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busdiscover"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // stopStatus is the outcome tag; JSON wire format is the string form — keep values stable.

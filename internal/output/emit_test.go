@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	extcs "github.com/larksuite/cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
 )
 
 // mockProvider is a test provider that returns a configurable alert.

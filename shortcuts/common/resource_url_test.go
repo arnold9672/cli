@@ -6,7 +6,7 @@ package common
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 func TestParseResourceURL(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const createHint = "verify --app-type is html or full_stack and --name is non-empty; if this is a permission error, confirm your account can create apps"

@@ -1,4 +1,4 @@
-module github.com/larksuite/cli/lint
+module code.byted.org/lark_search/larksuite-cli/lint
 
 go 1.23.0
 

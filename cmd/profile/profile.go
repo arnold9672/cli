@@ -6,7 +6,7 @@ package profile
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // NewCmdProfile creates the profile command with subcommands.

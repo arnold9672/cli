@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	eventlib "github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
 
-	_ "github.com/larksuite/cli/events"
+	_ "code.byted.org/lark_search/larksuite-cli/events"
 )
 
 func TestEventLookup_VCMeetingLifecycleKeys(t *testing.T) {

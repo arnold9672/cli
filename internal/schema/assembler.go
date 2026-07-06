@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/internal/affordance"
-	"github.com/larksuite/cli/internal/apicatalog"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/affordance"
+	"code.byted.org/lark_search/larksuite-cli/internal/apicatalog"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // Convert renders a meta.Field as a JSON-Schema Property. meta owns the value

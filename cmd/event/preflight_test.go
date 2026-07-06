@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/appmeta"
-	"github.com/larksuite/cli/internal/core"
-	eventlib "github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/appmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 func newPreflightCtx(appID string, brand core.LarkBrand, identity core.Identity, keyDef *eventlib.KeyDefinition, appVer *appmeta.AppVersion) *preflightCtx {

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/larksuite/cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
 )
 
 func TestGetInitMsg_Zh(t *testing.T) {

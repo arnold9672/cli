@@ -6,7 +6,7 @@ package event
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 func NewCmdEvents(f *cmdutil.Factory) *cobra.Command {

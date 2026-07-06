@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
 )
 
 type LegacyCommand struct {

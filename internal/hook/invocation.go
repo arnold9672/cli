@@ -6,7 +6,7 @@ package hook
 import (
 	"time"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // invocation is the framework-side concrete implementation of

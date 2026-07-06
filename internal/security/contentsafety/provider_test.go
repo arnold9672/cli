@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	extcs "github.com/larksuite/cli/extension/contentsafety"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
 )
 
 func writeTestConfig(t *testing.T, content string) string {

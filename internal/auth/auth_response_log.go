@@ -6,7 +6,7 @@ package auth
 import (
 	"net/http"
 
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 

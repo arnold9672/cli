@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 // TestBuild_DefaultNoCompletionLeak verifies that, without any call to

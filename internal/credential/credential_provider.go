@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"sync"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // DefaultAccountResolver is implemented by the default account provider.

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 BINARY   := lark-cli
-MODULE   := github.com/larksuite/cli
+MODULE   := code.byted.org/lark_search/larksuite-cli
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 DATE     := $(shell date +%Y-%m-%d)
 NODE     ?= node

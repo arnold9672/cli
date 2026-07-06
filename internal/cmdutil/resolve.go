@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 // ResolveInput resolves special input conventions for a raw flag value:

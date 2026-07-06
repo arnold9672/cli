@@ -6,7 +6,7 @@ package skillscheck
 import (
 	"os"
 
-	"github.com/larksuite/cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
 )
 
 // shouldSkip returns true when the skills check should be silently

@@ -8,7 +8,7 @@ package binding
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // checkOwnerUID is a no-op on Windows where Unix UID semantics don't apply.

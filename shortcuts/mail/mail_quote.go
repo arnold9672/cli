@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
 )
 
 // ---- HTML quote block builders (Lark adit-html-block structure) ---------------

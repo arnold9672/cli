@@ -19,17 +19,17 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/cmdmeta"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/i18n"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -450,12 +450,23 @@ func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interfa
 // Auth resolution is delegated to APIClient.DoSDKRequest to avoid duplicating
 // the identity → token logic across the generic and shortcut API paths.
 func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	return ctx.DoAPIWithHeaders(req, nil, opts...)
+}
+
+// DoAPIWithHeaders executes a raw Lark SDK request with request-specific
+// headers merged with shortcut metadata headers. Use this when an endpoint
+// needs an extra routing header such as x-tt-env.
+func (ctx *RuntimeContext) DoAPIWithHeaders(req *larkcore.ApiReq, headers http.Header, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
 	}
-	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
-		opts = append(opts, optFn)
+	mergedHeaders := cloneHeader(headers)
+	if shortcutHeaders := cmdutil.ShortcutHeaders(ctx.ctx); shortcutHeaders != nil {
+		mergeHeader(mergedHeaders, shortcutHeaders)
+	}
+	if len(mergedHeaders) > 0 {
+		opts = append(opts, larkcore.WithHeaders(mergedHeaders))
 	}
 	return ac.DoSDKRequest(ctx.ctx, req, ctx.As(), opts...)
 }
@@ -472,6 +483,21 @@ func (ctx *RuntimeContext) DoAPIAsBot(req *larkcore.ApiReq, opts ...larkcore.Req
 		opts = append(opts, optFn)
 	}
 	return ac.DoSDKRequest(ctx.ctx, req, core.AsBot, opts...)
+}
+
+func cloneHeader(headers http.Header) http.Header {
+	if headers == nil {
+		return make(http.Header)
+	}
+	return headers.Clone()
+}
+
+func mergeHeader(dst, src http.Header) {
+	for key, values := range src {
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
 }
 
 // DoAPIStream executes a streaming HTTP request via APIClient.DoStream.

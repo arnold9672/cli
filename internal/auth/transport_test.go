@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // TestTryHandleMCPResponse_RecognisesDataCode pins the parser's primary path:

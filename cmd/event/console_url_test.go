@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
-	eventlib "github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 func decodeAddons(t *testing.T, encoded string) ManifestAddons {

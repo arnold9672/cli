@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/internal/util"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/util"
 )
 
 // fieldFacts returns a param field's facts in display order, each as a compact

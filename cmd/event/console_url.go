@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/core"
-	eventlib "github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // Landing-page contract for the scan-to-enable deep link, verified against the

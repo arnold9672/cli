@@ -6,7 +6,7 @@ package output_test
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func TestExitCodeOfBareError(t *testing.T) {

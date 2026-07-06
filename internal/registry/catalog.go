@@ -3,7 +3,7 @@
 
 package registry
 
-import "github.com/larksuite/cli/internal/apicatalog"
+import "code.byted.org/lark_search/larksuite-cli/internal/apicatalog"
 
 // EmbeddedCatalog returns a navigation catalog over the embedded (overlay-free)
 // metadata — deterministic across machines, for `lark-cli schema`, golden tests

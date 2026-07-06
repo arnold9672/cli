@@ -10,7 +10,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 // permissiveFIO is a test-only fileio that delegates to os without

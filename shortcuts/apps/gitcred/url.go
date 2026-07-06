@@ -12,7 +12,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func NormalizeGitHTTPURL(raw string) (string, error) {

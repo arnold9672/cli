@@ -9,8 +9,8 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/larksuite/cli/cmd"
-	"github.com/larksuite/cli/internal/affordance"
+	"code.byted.org/lark_search/larksuite-cli/cmd"
+	"code.byted.org/lark_search/larksuite-cli/internal/affordance"
 )
 
 // embeddedContentFS bundles the agent-readable content that must ship in lockstep

@@ -11,8 +11,8 @@ import (
 	"encoding/hex"
 	"io"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 // htmlPublishTarball is the in-memory packed tar.gz ready for multipart upload.

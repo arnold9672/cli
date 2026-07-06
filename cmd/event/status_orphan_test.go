@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event/busdiscover"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/busdiscover"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 type fakeScanner struct {

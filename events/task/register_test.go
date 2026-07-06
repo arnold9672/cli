@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/schemas"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/schemas"
 )
 
 func TestKeysTaskUpdateUserAccessMetadata(t *testing.T) {

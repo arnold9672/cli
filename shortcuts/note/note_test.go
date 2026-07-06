@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 // These tests were relocated from shortcuts/vc/vc_notes_test.go together with

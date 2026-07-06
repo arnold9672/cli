@@ -7,9 +7,9 @@ package main
 import (
 	"os"
 
-	"github.com/larksuite/cli/cmd"
+	"code.byted.org/lark_search/larksuite-cli/cmd"
 
-	_ "github.com/larksuite/cli/extension/credential/env" // activate env credential provider
+	_ "code.byted.org/lark_search/larksuite-cli/extension/credential/env" // activate env credential provider
 )
 
 func main() {

@@ -3,7 +3,7 @@
 
 package event
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 func eventValidationError(format string, args ...any) *errs.ValidationError {
 	return errs.NewValidationError(errs.SubtypeInvalidArgument, format, args...)

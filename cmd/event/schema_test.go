@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/schemas"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	eventlib "code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/schemas"
 
-	_ "github.com/larksuite/cli/events"
+	_ "code.byted.org/lark_search/larksuite-cli/events"
 )
 
 func TestRunSchema_ProcessedKey_Text(t *testing.T) {

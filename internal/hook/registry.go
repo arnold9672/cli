@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // ObserverEntry stores one Observer registration. The full hook name

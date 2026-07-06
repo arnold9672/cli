@@ -11,11 +11,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/i18n"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // Identity represents the caller identity for API requests.

@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/hook"
-	internalplatform "github.com/larksuite/cli/internal/platform"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
+	internalplatform "code.byted.org/lark_search/larksuite-cli/internal/platform"
 )
 
 // installFatalGuard wires a fail-closed guard at every cobra dispatch

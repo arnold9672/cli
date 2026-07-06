@@ -16,13 +16,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
-	"github.com/larksuite/cli/internal/event/transport"
-	"github.com/larksuite/cli/internal/lockfile"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/lockfile"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const (

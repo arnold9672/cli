@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 )
 
 // StoredUAToken represents a stored user access token.

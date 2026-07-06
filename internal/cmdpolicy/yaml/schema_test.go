@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
-	pyaml "github.com/larksuite/cli/internal/cmdpolicy/yaml"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	pyaml "code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy/yaml"
 )
 
 func TestParse_validRule(t *testing.T) {

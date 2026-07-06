@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/hook"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/hook"
 )
 
 // HookEntry is the displayable form of one registered hook.

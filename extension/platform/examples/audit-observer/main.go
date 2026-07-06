@@ -19,8 +19,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/larksuite/cli/cmd"
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/cmd"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 func init() {

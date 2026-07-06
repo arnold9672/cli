@@ -6,7 +6,7 @@ package source
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/event/protocol"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/protocol"
 )
 
 // "disconnected to <url>" contains "connected to ws" — must use HasPrefix to avoid misclassifying as connect.

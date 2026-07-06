@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 type attachmentTestFileIO struct {

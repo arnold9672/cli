@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	extcs "github.com/larksuite/cli/extension/contentsafety"
-	"github.com/larksuite/cli/internal/envvars"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
 )
 
 type mode uint8

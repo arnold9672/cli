@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // VCRecordingStartedOutput is the flattened shape for vc.recording.recording_started_v1.

@@ -6,8 +6,8 @@ package task
 import (
 	"errors"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 // wrapTaskNetworkErr returns err unchanged when it is already a typed errs.*

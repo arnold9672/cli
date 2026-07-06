@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // shutdownDeadline is the hard upper bound on how long Shutdown

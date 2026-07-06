@@ -8,13 +8,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	_ "github.com/larksuite/cli/extension/credential/env"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	_ "code.byted.org/lark_search/larksuite-cli/extension/credential/env"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
 
 type countingFileIOProvider struct {

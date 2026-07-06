@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	exttransport "github.com/larksuite/cli/extension/transport"
-	internalauth "github.com/larksuite/cli/internal/auth"
+	exttransport "code.byted.org/lark_search/larksuite-cli/extension/transport"
+	internalauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

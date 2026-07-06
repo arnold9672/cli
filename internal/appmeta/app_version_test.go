@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/event/testutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/event/testutil"
 )
 
 const respFourVersions = `{

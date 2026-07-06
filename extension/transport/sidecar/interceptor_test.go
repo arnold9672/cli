@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/larksuite/cli/sidecar"
+	"code.byted.org/lark_search/larksuite-cli/sidecar"
 )
 
 // failingBody is a ReadCloser that errors on Read and tracks Close calls.

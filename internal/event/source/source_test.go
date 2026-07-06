@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 type mockSource struct {

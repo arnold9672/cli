@@ -338,7 +338,7 @@ func TestCheckBuildAPIErrorArms_FlagsMissingCategory(t *testing.T) {
 	// Switch is missing the CategoryConfirmation arm.
 	src := `package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type ClassifyContext struct{}
 
@@ -378,7 +378,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 func TestCheckBuildAPIErrorArms_FlagsMissingDefault(t *testing.T) {
 	src := `package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type ClassifyContext struct{}
 
@@ -419,7 +419,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 func TestCheckBuildAPIErrorArms_FlagsNilReturningDefault(t *testing.T) {
 	src := `package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type ClassifyContext struct{}
 
@@ -461,7 +461,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 func TestCheckBuildAPIErrorArms_AcceptsCompliantSwitch(t *testing.T) {
 	src := `package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type ClassifyContext struct{}
 
@@ -500,7 +500,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 func TestCheckBuildAPIErrorArms_RejectsWrongCategoryDefault(t *testing.T) {
 	src := `package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type ClassifyContext struct{}
 
@@ -542,7 +542,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 func TestCheckBuildAPIErrorArms_AcceptsNewInternalErrorConstructor(t *testing.T) {
 	src := `package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 type ClassifyContext struct{}
 
@@ -582,7 +582,7 @@ func TestCheckBuildAPIErrorArms_ScopedToClassifyFile(t *testing.T) {
 	// Identical violating shape outside the canonical path — must NOT fire.
 	src := `package custom
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 func BuildAPIError(resp map[string]any) error {
 	var cat errs.Category

@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 	"gopkg.in/yaml.v3"
 )
 

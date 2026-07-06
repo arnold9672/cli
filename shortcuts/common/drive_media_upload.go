@@ -11,8 +11,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
 )
 
 const MaxDriveMediaUploadSinglePartSize int64 = 20 * 1024 * 1024 // 20MB

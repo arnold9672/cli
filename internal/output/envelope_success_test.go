@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	extcs "github.com/larksuite/cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
 )
 
 func TestSuccessEnvelopeData_ExtractsBusinessData(t *testing.T) {

@@ -11,14 +11,14 @@ import (
 	"sort"
 	"strings"
 
-	qdiff "github.com/larksuite/cli/internal/qualitygate/diff"
-	manifestexamples "github.com/larksuite/cli/internal/qualitygate/examples"
-	"github.com/larksuite/cli/internal/qualitygate/facts"
-	"github.com/larksuite/cli/internal/qualitygate/manifest"
-	"github.com/larksuite/cli/internal/qualitygate/publiccontent"
-	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/qualitygate/skillscan"
-	"github.com/larksuite/cli/internal/vfs"
+	qdiff "code.byted.org/lark_search/larksuite-cli/internal/qualitygate/diff"
+	manifestexamples "code.byted.org/lark_search/larksuite-cli/internal/qualitygate/examples"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/manifest"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/publiccontent"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/skillscan"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 type Options struct {

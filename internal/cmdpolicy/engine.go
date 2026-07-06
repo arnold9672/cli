@@ -22,8 +22,8 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/cmdmeta"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdmeta"
 )
 
 // Decision is the user-layer single-rule evaluation result. Distinct from

@@ -3,7 +3,7 @@
 
 package publiccontent
 
-import "github.com/larksuite/cli/internal/qualitygate/report"
+import "code.byted.org/lark_search/larksuite-cli/internal/qualitygate/report"
 
 type Options struct {
 	Repo         string

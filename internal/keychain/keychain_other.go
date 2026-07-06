@@ -15,9 +15,9 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 	"github.com/google/uuid"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 const masterKeyBytes = 32

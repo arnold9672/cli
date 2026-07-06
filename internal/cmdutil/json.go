@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 // ParseOptionalBody parses --data JSON for methods that accept a request body.

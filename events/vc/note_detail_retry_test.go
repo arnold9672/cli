@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // isLarkCode must match the API code on typed errs.* errors — the consume

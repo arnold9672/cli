@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.

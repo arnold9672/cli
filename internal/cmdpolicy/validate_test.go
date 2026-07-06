@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
 )
 
 // nil rule is "no restriction" everywhere -- validation must agree.

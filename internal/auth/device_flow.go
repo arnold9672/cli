@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // DeviceAuthResponse is the response from the device authorization endpoint.

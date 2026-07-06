@@ -6,7 +6,7 @@ package cmdpolicy_test
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdpolicy"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdpolicy"
 )
 
 func TestAggregateChildren_allSameLayerAndReason(t *testing.T) {

@@ -6,7 +6,7 @@ package semantic
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
 )
 
 func TestGatekeeperUsesChangedOnlyRollout(t *testing.T) {

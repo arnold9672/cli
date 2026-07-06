@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // TestReminderTask_RequiresSetOrRemove covers the first Validate guard: neither

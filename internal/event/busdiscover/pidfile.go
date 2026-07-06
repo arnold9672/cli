@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/lockfile"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/lockfile"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const (

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // PaginationOptions contains pagination control options.

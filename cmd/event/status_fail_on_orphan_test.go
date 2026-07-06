@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func TestExitForOrphan_Orphan(t *testing.T) {

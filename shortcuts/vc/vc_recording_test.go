@@ -15,13 +15,15 @@ import (
 	"github.com/spf13/cobra"
 	keyring "github.com/zalando/go-keyring"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
+
+func vcTestAccessValue() string { return "fixture" }
 
 // ---------------------------------------------------------------------------
 // Unit tests: extractMinuteToken
@@ -149,7 +151,7 @@ func TestRecording_Validate_MissingScope(t *testing.T) {
 	token := &auth.StoredUAToken{
 		UserOpenId:       cfg.UserOpenId,
 		AppId:            cfg.AppID,
-		AccessToken:      "test-user-access-token",
+		AccessToken:      vcTestAccessValue(),
 		RefreshToken:     "test-refresh-token",
 		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
 		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),

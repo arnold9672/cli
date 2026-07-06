@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
-	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/emlbuilder"
 )
 
 // MailReply is the `+reply` shortcut: reply to the sender of a message,

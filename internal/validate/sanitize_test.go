@@ -6,7 +6,7 @@ package validate
 import (
 	"testing"
 
-	"github.com/larksuite/cli/internal/charcheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/charcheck"
 )
 
 func TestSanitizeForTerminal_StripsEscapesAndDangerousChars(t *testing.T) {

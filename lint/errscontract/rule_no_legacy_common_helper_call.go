@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const commonImportPath = "github.com/larksuite/cli/shortcuts/common"
+const commonImportPath = "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // legacyCommonHelperReplacements maps each deleted legacy common helper to its
 // typed replacement. The helper bodies are gone, so these names should never

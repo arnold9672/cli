@@ -10,12 +10,12 @@ import (
 
 	"github.com/charmbracelet/huh"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts"
 )
 
 // domainMeta describes a domain for the interactive selector.

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/internal/charcheck"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/charcheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // SafeOutputPath validates a download/export target path for --output flags.

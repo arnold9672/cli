@@ -7,7 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func dryRunTableList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

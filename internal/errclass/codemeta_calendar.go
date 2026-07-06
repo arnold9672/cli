@@ -3,7 +3,7 @@
 
 package errclass
 
-import "github.com/larksuite/cli/errs"
+import "code.byted.org/lark_search/larksuite-cli/errs"
 
 // calendarCodeMeta holds calendar-service Lark code → CodeMeta mappings.
 // Only codes whose meaning is verifiable from repo evidence are registered;

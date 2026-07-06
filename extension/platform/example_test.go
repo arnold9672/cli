@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/larksuite/cli/extension/platform"
+	"code.byted.org/lark_search/larksuite-cli/extension/platform"
 )
 
 // ExampleNewPlugin_observer registers an audit Observer that fires

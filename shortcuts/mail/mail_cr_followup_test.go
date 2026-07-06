@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 // stubGetMessageWithAttachments registers a messages.get stub returning a

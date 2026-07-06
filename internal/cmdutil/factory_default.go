@@ -9,22 +9,23 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/registry"
-	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
-	"github.com/larksuite/cli/internal/transport"
-	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	_ "code.byted.org/lark_search/larksuite-cli/internal/security/contentsafety" // register content safety provider
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
+	_ "code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio" // register default FileIO provider
 )
 
 // NewDefault creates a production Factory with cached closures.
@@ -146,10 +147,20 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			Transport:     buildSDKTransport(),
 			CheckRedirect: safeRedirectPolicy,
 		}))
-		ep := core.ResolveEndpoints(acct.Brand)
-		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
+		opts = append(opts, lark.WithOpenBaseUrl(resolveSDKOpenBaseURL(acct.Brand, os.Getenv)))
 		return lark.NewClient(acct.AppID, credential.RuntimeAppSecret(acct.AppSecret), opts...), nil
 	})
+}
+
+const envOpenBaseURL = "LARKSUITE_CLI_OPEN_BASE_URL"
+
+func resolveSDKOpenBaseURL(brand core.LarkBrand, getenv func(string) string) string {
+	if getenv != nil {
+		if baseURL := strings.TrimRight(strings.TrimSpace(getenv(envOpenBaseURL)), "/"); baseURL != "" {
+			return baseURL
+		}
+	}
+	return core.ResolveEndpoints(brand).Open
 }
 
 func buildSDKTransport() http.RoundTripper {

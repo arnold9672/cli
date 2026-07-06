@@ -3,7 +3,7 @@
 
 package registry
 
-import "github.com/larksuite/cli/internal/meta"
+import "code.byted.org/lark_search/larksuite-cli/internal/meta"
 
 // DeclaredScopesForMethod returns the scopes declared by a method for the given
 // identity. Prefers the explicit `requiredScopes` field when present; otherwise

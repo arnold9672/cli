@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/httpmock"
-	_ "github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	_ "code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
 
 // chdirTemp switches into a fresh temp dir for the duration of the test and

@@ -6,7 +6,7 @@ package markdown
 import (
 	"errors"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func markdownValidationError(format string, args ...any) *errs.ValidationError {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 

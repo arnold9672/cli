@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/meta"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/meta"
 )
 
 // waitBackgroundRefresh blocks until any in-flight background refresh started by

@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // Git credential list scans CLI config-dir state; it is not user file I/O.
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs" //nolint:depguard // Git credential list scans CLI config-dir state; it is not user file I/O.
 )
 
 type gitCredentialAppStorage struct{}

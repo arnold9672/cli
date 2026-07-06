@@ -1,4 +1,4 @@
-module github.com/larksuite/cli
+module code.byted.org/lark_search/larksuite-cli
 
 go 1.23.0
 

@@ -6,7 +6,7 @@ package apps
 import (
 	"io"
 
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // Gateway paths for the spark app.release OpenAPI methods.

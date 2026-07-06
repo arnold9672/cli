@@ -6,7 +6,7 @@ package im
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ImFeedShortcutRemove provides the +feed-shortcut-remove shortcut for

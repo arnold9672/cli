@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // readClipboardImageBytes reads the current clipboard image and returns the

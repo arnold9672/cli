@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 // ComputeSubscriptionID returns a stable identifier scoped to (EventKey, values

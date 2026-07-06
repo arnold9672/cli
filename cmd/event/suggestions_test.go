@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/larksuite/cli/events"
+	_ "code.byted.org/lark_search/larksuite-cli/events"
 )
 
 func TestSuggestEventKeys(t *testing.T) {

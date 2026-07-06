@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/transport"
+	exttransport "code.byted.org/lark_search/larksuite-cli/extension/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
 )
 
 // RetryTransport is an http.RoundTripper that retries on 5xx responses

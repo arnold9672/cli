@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
-	extcs "github.com/larksuite/cli/extension/contentsafety"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
 

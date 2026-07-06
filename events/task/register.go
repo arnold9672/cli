@@ -7,7 +7,7 @@ package task
 import (
 	"reflect"
 
-	"github.com/larksuite/cli/internal/event"
+	"code.byted.org/lark_search/larksuite-cli/internal/event"
 )
 
 const eventTypeTaskUpdateUserAccessV2 = "task.task.update_user_access_v2"

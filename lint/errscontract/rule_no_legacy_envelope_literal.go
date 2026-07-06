@@ -14,7 +14,7 @@ import (
 // legacy ExitError / ErrDetail envelope types. The rule resolves whatever local
 // name (default or alias) this path is bound to in each file, so an aliased
 // import cannot bypass the check.
-const legacyOutputImportPath = "github.com/larksuite/cli/internal/output"
+const legacyOutputImportPath = "code.byted.org/lark_search/larksuite-cli/internal/output"
 
 // CheckNoLegacyEnvelopeLiteral is a relapse guard against re-introducing
 // the deleted legacy output.ExitError / output.ErrDetail envelope literals.

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/qualitygate/facts"
+	"code.byted.org/lark_search/larksuite-cli/internal/qualitygate/facts"
 )
 
 type Client struct {

@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/util"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ImChatSearch is the +chat-search shortcut: wraps POST /open-apis/im/v2/chats/search

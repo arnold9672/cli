@@ -14,14 +14,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/identitydiag"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/transport"
-	"github.com/larksuite/cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/identitydiag"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
 )
 
 // DoctorOptions holds inputs for the doctor command.

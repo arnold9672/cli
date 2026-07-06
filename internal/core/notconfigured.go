@@ -7,7 +7,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/larksuite/cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 // isMalformedConfigError reports whether a config load failure indicates a
