@@ -54,6 +54,12 @@ func TestMemoryDryRunShapes(t *testing.T) {
 			args: []string{"+get", "--memory-key", "personal_memory_snapshot", "--variant-key", "v2", "--payload-mode", "summary", "--dry-run", "--as", "user"},
 			want: []string{"variant_key", "v2", "payload_mode", "summary"},
 		},
+		{
+			name: "get variant underscore alias",
+			s:    MemoryGet,
+			args: []string{"+get", "--memory-key", "personal_memory_snapshot", "--variant_key", "default", "--dry-run", "--as", "user"},
+			want: []string{"variant_key", "default", "payload_mode", "full"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -84,6 +90,21 @@ func TestMemoryGetValidation(t *testing.T) {
 	}
 	if validation.Param != "--memory-key" {
 		t.Fatalf("param = %q, want --memory-key", validation.Param)
+	}
+}
+
+func TestMemoryGetVariantKeyAliasConflict(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, memoryTestConfig(t))
+	err := runMemoryShortcut(t, MemoryGet, []string{"+get", "--memory-key", "personal_memory_snapshot", "--variant-key", "v1", "--variant_key", "v2", "--as", "user"}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validation.Param != "--variant_key" {
+		t.Fatalf("param = %q, want --variant_key", validation.Param)
 	}
 }
 

@@ -29,11 +29,15 @@ var MemoryGet = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "memory-key", Desc: "Memory Hub memory_key", Required: true},
 		{Name: "variant-key", Desc: "optional Memory Hub variant_key"},
+		{Name: "variant_key", Desc: "alias for --variant-key", Hidden: true},
 		{Name: "payload-mode", Default: payloadModeFull, Desc: "payload mode", Enum: []string{payloadModeMetadata, payloadModeSummary, payloadModeFull}},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("memory-key")) == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--memory-key is required").WithParam("--memory-key")
+		}
+		if err := validateVariantKeyFlags(rctx); err != nil {
+			return err
 		}
 		return nil
 	},
@@ -67,8 +71,26 @@ func buildGetMemoryBody(rctx *common.RuntimeContext) map[string]interface{} {
 		"memory_key":   strings.TrimSpace(rctx.Str("memory-key")),
 		"payload_mode": strings.TrimSpace(rctx.Str("payload-mode")),
 	}
-	if variantKey := strings.TrimSpace(rctx.Str("variant-key")); variantKey != "" {
+	if variantKey := memoryVariantKey(rctx); variantKey != "" {
 		body["variant_key"] = variantKey
 	}
 	return body
+}
+
+func memoryVariantKey(rctx *common.RuntimeContext) string {
+	if variantKey := strings.TrimSpace(rctx.Str("variant-key")); variantKey != "" {
+		return variantKey
+	}
+	return strings.TrimSpace(rctx.Str("variant_key"))
+}
+
+func validateVariantKeyFlags(rctx *common.RuntimeContext) error {
+	hyphen := strings.TrimSpace(rctx.Str("variant-key"))
+	underscore := strings.TrimSpace(rctx.Str("variant_key"))
+	if hyphen == "" || underscore == "" || hyphen == underscore {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "--variant-key and --variant_key conflict").
+		WithParam("--variant_key").
+		WithHint("use only one variant key flag")
 }

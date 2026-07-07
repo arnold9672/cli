@@ -58,6 +58,7 @@ lark-memory-cli memory +get --memory-key <memory_key> --payload-mode metadata --
 | 列出可见 memory | `lark-memory-cli memory +list --as user --format json` |
 | 获取 memory 详情 | `lark-memory-cli memory +get --memory-key <key> --as user --format json` |
 | 获取指定 variant | `lark-memory-cli memory +get --memory-key <key> --variant-key <variant> --as user --format json` |
+| 获取指定 variant（meta 字段名兼容） | `lark-memory-cli memory +get --memory-key <key> --variant_key <variant> --as user --format json` |
 | 调试请求结构 | 在上述命令后追加 `--dry-run` |
 
 ## 权限与身份

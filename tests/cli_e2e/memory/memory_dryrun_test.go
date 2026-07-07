@@ -51,6 +51,29 @@ func TestMemoryDryRun(t *testing.T) {
 		require.Equal(t, "personal_memory_snapshot", gjson.Get(result.Stdout, "api.0.body.memory_key").String())
 		require.Equal(t, "full", gjson.Get(result.Stdout, "api.0.body.payload_mode").String())
 	})
+
+	t.Run("get accepts variant_key alias", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"memory", "+get",
+				"--memory-key", "personal_memory_snapshot",
+				"--variant_key", "default",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+
+		require.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
+		require.Equal(t, "/open-apis/search/v2/memory_hub/get_memory", gjson.Get(result.Stdout, "api.0.url").String())
+		require.Equal(t, "personal_memory_snapshot", gjson.Get(result.Stdout, "api.0.body.memory_key").String())
+		require.Equal(t, "default", gjson.Get(result.Stdout, "api.0.body.variant_key").String())
+		require.Equal(t, "full", gjson.Get(result.Stdout, "api.0.body.payload_mode").String())
+	})
 }
 
 func setMemoryDryRunEnv(t *testing.T) {
