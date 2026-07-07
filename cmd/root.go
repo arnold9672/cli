@@ -367,6 +367,9 @@ func installUnknownSubcommandGuard(cmd *cobra.Command) {
 // each fail structured (exit 2) instead of degrading to help + exit 0.
 func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
+		if rootUpdateRequested(cmd) {
+			return runRootUpdateShortcut(cmd)
+		}
 		// A bare group (e.g. `sheets`), or one carrying only group-valid flags
 		// like the global --profile, legitimately prints help. But a flag that
 		// belongs to a (missing) subcommand is a user error: the guard's
@@ -424,6 +427,54 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).
 		WithParams(errs.InvalidParam{Name: unknown, Reason: "unknown subcommand", Suggestions: suggestions}).
 		WithHint("%s", hint)
+}
+
+func rootUpdateRequested(cmd *cobra.Command) bool {
+	if cmd.Root() != cmd {
+		return false
+	}
+	flag := cmd.Flags().Lookup("update")
+	return flag != nil && flag.Changed && flag.Value.String() == "true"
+}
+
+func runRootUpdateShortcut(root *cobra.Command) error {
+	updateCmd, _, err := root.Find([]string{"update"})
+	if err != nil || updateCmd == nil || updateCmd == root {
+		return errs.NewInternalError(errs.SubtypeUnknown, "update command is not registered")
+	}
+	updateArgs := stripRootUpdateFlag(rawInvocationArgs)
+	if err := updateCmd.Flags().Parse(updateArgs); err != nil {
+		return flagDidYouMean(updateCmd, err)
+	}
+	args := updateCmd.Flags().Args()
+	if len(args) > 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unexpected argument %q for %q", args[0], updateCmd.CommandPath()).
+			WithParams(errs.InvalidParam{Name: args[0], Reason: "unexpected argument"}).
+			WithHint("run `%s --help` for valid flags", updateCmd.CommandPath())
+	}
+	if updateCmd.RunE != nil {
+		return updateCmd.RunE(updateCmd, nil)
+	}
+	if updateCmd.Run != nil {
+		updateCmd.Run(updateCmd, nil)
+		return nil
+	}
+	return errs.NewInternalError(errs.SubtypeUnknown, "update command is not runnable")
+}
+
+func stripRootUpdateFlag(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	stripped := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--update" || strings.HasPrefix(arg, "--update=") {
+			continue
+		}
+		stripped = append(stripped, arg)
+	}
+	return stripped
 }
 
 // flagTokensInArgs returns the flag-like tokens (-x, --foo, --foo=bar) in

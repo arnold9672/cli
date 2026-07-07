@@ -46,6 +46,23 @@ func normalizeVersion(s string) string {
 	return strings.TrimPrefix(s, "V")
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func shortRevision(rev string) string {
+	rev = strings.TrimSpace(rev)
+	if len(rev) <= 12 {
+		return rev
+	}
+	return rev[:12]
+}
+
 func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
 }
@@ -98,11 +115,12 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update lark-cli to the latest version",
-		Long: `Update lark-cli to the latest version.
+		Short: "Update lark-cli/lark-memory-cli to the latest version",
+		Long: `Update lark-cli/lark-memory-cli to the latest version.
 
 Detects the installation method automatically:
   - npm install: runs npm install -g @larksuite/cli@<version>
+  - lark-memory-cli source install: pulls jhn_memory, rebuilds, and syncs skills
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
@@ -130,6 +148,14 @@ func updateRun(opts *UpdateOptions) error {
 	}
 	output.PendingNotice = nil
 
+	// lark-memory-cli is installed from a source checkout and wrapper, not from
+	// @larksuite/cli on npm. Handle it before querying the npm-backed latest
+	// version registry; otherwise the fork would compare against upstream.
+	detect := updater.DetectInstallMethod()
+	if detect.Method == selfupdate.InstallMemorySource {
+		return doMemorySourceUpdate(opts, io, cur, detect, updater)
+	}
+
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
 	if err != nil {
@@ -152,9 +178,6 @@ func updateRun(opts *UpdateOptions) error {
 		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
 
-	// 4. Detect installation method
-	detect := updater.DetectInstallMethod()
-
 	// 5. --check
 	if opts.Check {
 		return reportCheckResult(opts, io, cur, latest, detect.CanAutoUpdate())
@@ -165,6 +188,89 @@ func updateRun(opts *UpdateOptions) error {
 		return doManualUpdate(opts, io, cur, latest, detect, updater)
 	}
 	return doNpmUpdate(opts, io, cur, latest, updater)
+}
+
+func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	result, err := updater.UpdateMemorySource(selfupdate.MemoryUpdateOptions{
+		SourceDir:   detect.SourceDir,
+		AppDir:      detect.AppDir,
+		WrapperPath: detect.WrapperPath,
+		Branch:      selfupdate.MemoryDefaultBranch,
+		Check:       opts.Check,
+		Force:       opts.Force,
+	})
+	if err != nil {
+		return reportError(opts, io, "update_error",
+			errs.NewInternalError(errs.SubtypeUnknown, "failed to update lark-memory-cli source install: %s", err).WithCause(err))
+	}
+
+	action := "updated"
+	message := fmt.Sprintf("lark-memory-cli updated from %s to %s", shortRevision(result.PreviousRevision), shortRevision(result.CurrentRevision))
+	if opts.Check {
+		if result.Updated {
+			action = "update_available"
+			message = fmt.Sprintf("lark-memory-cli source branch %s has an update available", result.Branch)
+		} else {
+			action = "already_up_to_date"
+			message = fmt.Sprintf("lark-memory-cli source branch %s is already up to date", result.Branch)
+		}
+	} else if !result.Updated {
+		action = "already_up_to_date"
+		message = fmt.Sprintf("lark-memory-cli source branch %s rebuilt with no new commits", result.Branch)
+	}
+
+	if opts.JSON {
+		out := map[string]interface{}{
+			"ok":                true,
+			"previous_version":  cur,
+			"current_version":   firstNonEmpty(result.Version, cur),
+			"latest_version":    firstNonEmpty(result.Version, cur),
+			"action":            action,
+			"message":           message,
+			"install_method":    "memory_source",
+			"branch":            result.Branch,
+			"source_dir":        result.SourceDir,
+			"binary_path":       result.BinaryPath,
+			"wrapper_path":      result.WrapperPath,
+			"previous_revision": result.PreviousRevision,
+			"current_revision":  result.CurrentRevision,
+		}
+		if result.RemoteRevision != "" {
+			out["remote_revision"] = result.RemoteRevision
+		}
+		if len(result.SkillsSynced) > 0 {
+			out["skills_action"] = "synced"
+			out["skills_synced"] = result.SkillsSynced
+		}
+		if result.SkillsWarning != "" {
+			out["skills_warning"] = result.SkillsWarning
+		}
+		output.PrintJson(io.Out, out)
+		return nil
+	}
+
+	if opts.Check {
+		if result.Updated {
+			fmt.Fprintf(io.ErrOut, "Update available for lark-memory-cli branch %s: %s %s %s\n", result.Branch, shortRevision(result.PreviousRevision), symArrow(), shortRevision(result.RemoteRevision))
+			fmt.Fprintf(io.ErrOut, "\nRun `lark-memory-cli --update` to install.\n")
+		} else {
+			fmt.Fprintf(io.ErrOut, "%s lark-memory-cli branch %s is already up to date (%s)\n", symOK(), result.Branch, shortRevision(result.CurrentRevision))
+		}
+		return nil
+	}
+
+	fmt.Fprintf(io.ErrOut, "%s %s\n", symOK(), message)
+	fmt.Fprintf(io.ErrOut, "  Source:  %s\n", result.SourceDir)
+	fmt.Fprintf(io.ErrOut, "  Binary:  %s\n", result.BinaryPath)
+	fmt.Fprintf(io.ErrOut, "  Wrapper: %s\n", result.WrapperPath)
+	if len(result.SkillsSynced) > 0 {
+		fmt.Fprintf(io.ErrOut, "  Skills:  synced %d skill directories\n", len(result.SkillsSynced))
+	}
+	if result.SkillsWarning != "" {
+		fmt.Fprintf(io.ErrOut, "%s Skills sync warning: %s\n", symWarn(), result.SkillsWarning)
+	}
+	fmt.Fprintf(io.ErrOut, "  Restart Codex/Agent sessions to reload updated skills.\n")
+	return nil
 }
 
 // --- Output helpers ---

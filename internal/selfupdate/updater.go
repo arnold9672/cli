@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,6 +35,7 @@ type InstallMethod int
 const (
 	InstallNpm InstallMethod = iota
 	InstallManual
+	InstallMemorySource
 )
 
 const (
@@ -56,6 +59,9 @@ type DetectResult struct {
 	Method       InstallMethod
 	ResolvedPath string
 	NpmAvailable bool
+	SourceDir    string
+	AppDir       string
+	WrapperPath  string
 }
 
 // CanAutoUpdate returns true if the CLI can update itself automatically.
@@ -67,6 +73,9 @@ func (d DetectResult) CanAutoUpdate() bool {
 func (d DetectResult) ManualReason() string {
 	if d.Method == InstallNpm && !d.NpmAvailable {
 		return "installed via npm, but npm is not available in PATH"
+	}
+	if d.Method == InstallMemorySource {
+		return "installed as lark-memory-cli source build"
 	}
 	return "not installed via npm"
 }
@@ -92,6 +101,7 @@ func (r *NpmResult) CombinedOutput() string {
 type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
+	MemoryUpdateOverride     func(opts MemoryUpdateOptions) (*MemoryUpdateResult, error)
 	SkillsIndexFetchOverride func() *NpmResult
 	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
@@ -121,6 +131,10 @@ func (u *Updater) DetectInstallMethod() DetectResult {
 		return DetectResult{Method: InstallManual, ResolvedPath: exe}
 	}
 
+	if result, ok := detectMemorySourceInstall(resolved); ok {
+		return result
+	}
+
 	method := InstallManual
 	if strings.Contains(resolved, "node_modules") {
 		method = InstallNpm
@@ -138,6 +152,41 @@ func (u *Updater) DetectInstallMethod() DetectResult {
 		ResolvedPath: resolved,
 		NpmAvailable: npmAvailable,
 	}
+}
+
+func detectMemorySourceInstall(resolved string) (DetectResult, bool) {
+	clean := filepath.Clean(resolved)
+	appDir := filepath.Dir(clean)
+	if filepath.Base(clean) != "lark-cli" || filepath.Base(appDir) != "lark-memory-cli" {
+		return DetectResult{}, false
+	}
+	libexecDir := filepath.Dir(appDir)
+	if filepath.Base(libexecDir) != "libexec" {
+		return DetectResult{}, false
+	}
+	prefix := filepath.Dir(libexecDir)
+	sourceDir, err := memorySourceDir()
+	if err != nil {
+		sourceDir = ""
+	}
+	return DetectResult{
+		Method:       InstallMemorySource,
+		ResolvedPath: clean,
+		SourceDir:    sourceDir,
+		AppDir:       appDir,
+		WrapperPath:  filepath.Join(prefix, "bin", "lark-memory-cli"),
+	}, true
+}
+
+func memorySourceDir() (string, error) {
+	if dir := strings.TrimSpace(os.Getenv("LARK_CLI_MEMORY_DIR")); dir != "" {
+		return dir, nil
+	}
+	home, err := vfs.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".lark-cli-memory"), nil
 }
 
 // RunNpmInstall executes npm install -g @larksuite/cli@<version>.

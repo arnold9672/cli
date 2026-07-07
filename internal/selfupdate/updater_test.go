@@ -23,10 +23,17 @@ import (
 // executableTestFS mocks vfs for tests that still need vfs.Executable.
 type executableTestFS struct {
 	vfs.OsFs
-	exe string
+	exe      string
+	resolved string
 }
 
 func (f executableTestFS) Executable() (string, error) { return f.exe, nil }
+func (f executableTestFS) EvalSymlinks(path string) (string, error) {
+	if f.resolved != "" {
+		return f.resolved, nil
+	}
+	return f.OsFs.EvalSymlinks(path)
+}
 
 // lookPathMock patches execLookPath within VerifyBinary for controlled testing.
 // Do not use t.Parallel() in tests that install this mock — it mutates a package-level var.
@@ -73,6 +80,29 @@ func TestPrepareSelfReplace_ReturnsNoError(t *testing.T) {
 func TestCleanupStaleFiles_NoPanic(t *testing.T) {
 	u := New()
 	u.CleanupStaleFiles()
+}
+
+func TestDetectInstallMethodMemorySource(t *testing.T) {
+	oldFS := vfs.DefaultFS
+	t.Cleanup(func() { vfs.DefaultFS = oldFS })
+	t.Setenv("LARK_CLI_MEMORY_DIR", "/home/me/src/lark-memory")
+
+	exe := "/home/me/.local/libexec/lark-memory-cli/lark-cli"
+	vfs.DefaultFS = executableTestFS{exe: exe, resolved: exe}
+
+	got := New().DetectInstallMethod()
+	if got.Method != InstallMemorySource {
+		t.Fatalf("Method = %v, want InstallMemorySource", got.Method)
+	}
+	if got.SourceDir != "/home/me/src/lark-memory" {
+		t.Fatalf("SourceDir = %q", got.SourceDir)
+	}
+	if got.AppDir != "/home/me/.local/libexec/lark-memory-cli" {
+		t.Fatalf("AppDir = %q", got.AppDir)
+	}
+	if got.WrapperPath != "/home/me/.local/bin/lark-memory-cli" {
+		t.Fatalf("WrapperPath = %q", got.WrapperPath)
+	}
 }
 
 func TestVerifyBinaryLookPath(t *testing.T) {

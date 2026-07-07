@@ -204,6 +204,40 @@ func TestUnknownSubcommandRunE_GroupValidGlobalFlagShowsHelp(t *testing.T) {
 	}
 }
 
+func TestUnknownSubcommandRunE_RootUpdateFlagRunsUpdateCommand(t *testing.T) {
+	root := &cobra.Command{Use: "lark-cli"}
+	root.Flags().Bool("update", false, "")
+	called := false
+	update := &cobra.Command{
+		Use: "update",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			called = true
+			if got, _ := cmd.Flags().GetBool("json"); !got {
+				t.Fatalf("update --json flag was not forwarded")
+			}
+			if got, _ := cmd.Flags().GetBool("check"); !got {
+				t.Fatalf("update --check flag was not forwarded")
+			}
+			return nil
+		},
+	}
+	update.Flags().Bool("json", false, "")
+	update.Flags().Bool("check", false, "")
+	root.AddCommand(update)
+	installUnknownSubcommandGuard(root)
+
+	root.SetArgs([]string{"--update", "--json", "--check"})
+	rawInvocationArgs = []string{"--update", "--json", "--check"}
+	t.Cleanup(func() { rawInvocationArgs = nil })
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("root --update returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected update command to run")
+	}
+}
+
 func TestUnknownSubcommandRunE_NoArgsShowsHelp(t *testing.T) {
 	_, drive, _ := newGroupTree()
 	installUnknownSubcommandGuard(drive.Root())

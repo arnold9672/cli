@@ -185,6 +185,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.SetFlagErrorFunc(flagDidYouMean)
 
 	RegisterGlobalFlags(rootCmd.PersistentFlags(), &cfg.globals)
+	rootCmd.Flags().Bool("update", false, "update lark-memory-cli/lark-cli and synced skills")
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
 		f.CurrentCommand = cmd

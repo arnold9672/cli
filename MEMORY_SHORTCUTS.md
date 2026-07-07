@@ -135,6 +135,30 @@ export GO_BIN="/path/to/go"
 export LARKSUITE_CLI_CONFIG_DIR="$HOME/.config/lark-memory-cli"
 ```
 
+## 升级
+
+安装完成后，后续升级可以直接执行：
+
+```bash
+lark-memory-cli --update
+```
+
+升级命令会复用安装脚本的目录约定：
+
+- 源码目录：`${LARK_CLI_MEMORY_DIR:-$HOME/.lark-cli-memory}`
+- 二进制：`${LARK_CLI_PREFIX:-$HOME/.local}/libexec/lark-memory-cli/lark-cli`
+- wrapper：`${LARK_CLI_PREFIX:-$HOME/.local}/bin/lark-memory-cli`
+
+它会拉取 `jhn_memory` 分支、重新构建二进制、重写 wrapper，并同步
+`lark-memory` skill 到 `$HOME/.agents/skills/lark-memory` 和
+`$HOME/.codex/skills/lark-memory`。
+
+只检查是否有新提交，不执行安装：
+
+```bash
+lark-memory-cli update --check --json
+```
+
 ## 登录授权
 
 如果本机已经有可用的 `lark-cli` profile 和用户登录态，可以跳过本节。

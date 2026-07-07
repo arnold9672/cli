@@ -210,6 +210,123 @@ func TestUpdateManual_Human(t *testing.T) {
 	}
 }
 
+func TestUpdateMemorySource_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("memory source update must not fetch npm latest version")
+		return "", nil
+	}
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.1" }
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{
+				Method:       selfupdate.InstallMemorySource,
+				ResolvedPath: "/home/me/.local/libexec/lark-memory-cli/lark-cli",
+				SourceDir:    "/home/me/.lark-cli-memory",
+				AppDir:       "/home/me/.local/libexec/lark-memory-cli",
+				WrapperPath:  "/home/me/.local/bin/lark-memory-cli",
+			}
+		}
+		u.MemoryUpdateOverride = func(opts selfupdate.MemoryUpdateOptions) (*selfupdate.MemoryUpdateResult, error) {
+			if opts.Check {
+				t.Fatal("did not expect check mode")
+			}
+			if opts.SourceDir != "/home/me/.lark-cli-memory" || opts.AppDir == "" || opts.WrapperPath == "" {
+				t.Fatalf("unexpected memory update opts: %+v", opts)
+			}
+			return &selfupdate.MemoryUpdateResult{
+				Branch:           selfupdate.MemoryDefaultBranch,
+				SourceDir:        opts.SourceDir,
+				BinaryPath:       opts.AppDir + "/lark-cli",
+				WrapperPath:      opts.WrapperPath,
+				PreviousRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				CurrentRevision:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				Version:          "v1.0.1",
+				Updated:          true,
+				SkillsSynced:     []string{"/home/me/.agents/skills/lark-memory"},
+			}, nil
+		}
+		return u
+	}
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion; newUpdater = origNew })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"install_method": "memory_source"`) {
+		t.Errorf("expected memory_source install method, got: %s", out)
+	}
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated action, got: %s", out)
+	}
+	if !strings.Contains(out, `"skills_action": "synced"`) {
+		t.Errorf("expected skills synced action, got: %s", out)
+	}
+}
+
+func TestUpdateMemorySourceCheck_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--check", "--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("memory source check must not fetch npm latest version")
+		return "", nil
+	}
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.1" }
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{
+				Method:      selfupdate.InstallMemorySource,
+				SourceDir:   "/home/me/.lark-cli-memory",
+				AppDir:      "/home/me/.local/libexec/lark-memory-cli",
+				WrapperPath: "/home/me/.local/bin/lark-memory-cli",
+			}
+		}
+		u.MemoryUpdateOverride = func(opts selfupdate.MemoryUpdateOptions) (*selfupdate.MemoryUpdateResult, error) {
+			if !opts.Check {
+				t.Fatal("expected check mode")
+			}
+			return &selfupdate.MemoryUpdateResult{
+				Branch:           selfupdate.MemoryDefaultBranch,
+				SourceDir:        opts.SourceDir,
+				BinaryPath:       opts.AppDir + "/lark-cli",
+				WrapperPath:      opts.WrapperPath,
+				PreviousRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				CurrentRevision:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				RemoteRevision:   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				Version:          "v1.0.1",
+				Updated:          true,
+			}, nil
+		}
+		return u
+	}
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion; newUpdater = origNew })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "update_available"`) {
+		t.Errorf("expected update_available action, got: %s", out)
+	}
+	if !strings.Contains(out, `"remote_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"`) {
+		t.Errorf("expected remote revision, got: %s", out)
+	}
+}
+
 func TestUpdateNpm_JSON(t *testing.T) {
 	// Isolate config dir because skills sync writes skills-state.json.
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
