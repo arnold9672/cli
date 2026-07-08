@@ -204,8 +204,10 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 			errs.NewInternalError(errs.SubtypeUnknown, "failed to update lark-memory-cli source install: %s", err).WithCause(err))
 	}
 
+	previousVersion := memorySourceVersionLabel(cur, result.PreviousRevision)
+	currentVersion := memorySourceVersionLabel(result.Version, result.CurrentRevision)
 	action := "updated"
-	message := fmt.Sprintf("lark-memory-cli updated from %s to %s", shortRevision(result.PreviousRevision), shortRevision(result.CurrentRevision))
+	message := fmt.Sprintf("lark-memory-cli updated from %s to %s", previousVersion, currentVersion)
 	if opts.Check {
 		if result.Updated {
 			action = "update_available"
@@ -216,7 +218,7 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 		}
 	} else if !result.Updated {
 		action = "already_up_to_date"
-		message = fmt.Sprintf("lark-memory-cli source branch %s rebuilt with no new commits", result.Branch)
+		message = fmt.Sprintf("lark-memory-cli source branch %s rebuilt at %s with no new commits", result.Branch, currentVersion)
 	}
 
 	if opts.JSON {
@@ -263,6 +265,8 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 	}
 
 	fmt.Fprintf(io.ErrOut, "%s %s\n", symOK(), message)
+	fmt.Fprintf(io.ErrOut, "  Version: %s\n", currentVersion)
+	fmt.Fprintf(io.ErrOut, "  Revision: %s\n", shortRevision(result.CurrentRevision))
 	fmt.Fprintf(io.ErrOut, "  Source:  %s\n", result.SourceDir)
 	fmt.Fprintf(io.ErrOut, "  Binary:  %s\n", result.BinaryPath)
 	if result.ControlPath != "" {
@@ -277,6 +281,14 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 	}
 	fmt.Fprintf(io.ErrOut, "  Restart Codex/Agent sessions to reload updated skills.\n")
 	return nil
+}
+
+func memorySourceVersionLabel(version, revision string) string {
+	version = strings.TrimSpace(version)
+	if version != "" {
+		return version
+	}
+	return shortRevision(revision)
 }
 
 // --- Output helpers ---

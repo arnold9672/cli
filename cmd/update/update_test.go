@@ -272,6 +272,66 @@ func TestUpdateMemorySource_JSON(t *testing.T) {
 	}
 }
 
+func TestUpdateMemorySourceHumanShowsReadableVersion(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs(nil)
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("memory source update must not fetch npm latest version")
+		return "", nil
+	}
+	origVersion := currentVersion
+	currentVersion = func() string { return "v1.0.1" }
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{
+				Method:       selfupdate.InstallMemorySource,
+				ResolvedPath: "/home/me/.local/libexec/lark-memory-cli/lark-cli",
+				SourceDir:    "/home/me/.lark-cli-memory",
+				AppDir:       "/home/me/.local/libexec/lark-memory-cli",
+				WrapperPath:  "/home/me/.local/bin/lark-memory-cli",
+			}
+		}
+		u.MemoryUpdateOverride = func(opts selfupdate.MemoryUpdateOptions) (*selfupdate.MemoryUpdateResult, error) {
+			return &selfupdate.MemoryUpdateResult{
+				Branch:           selfupdate.MemoryDefaultBranch,
+				SourceDir:        opts.SourceDir,
+				BinaryPath:       opts.AppDir + "/lark-cli",
+				WrapperPath:      opts.WrapperPath,
+				ControlPath:      opts.SourceDir + "/bin/memoryctl",
+				PreviousRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				CurrentRevision:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				Version:          "v1.0.2",
+				Updated:          true,
+				SkillsSynced:     []string{"/home/me/.agents/skills/lark-memory"},
+			}, nil
+		}
+		return u
+	}
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion; newUpdater = origNew })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "lark-memory-cli updated from v1.0.1 to v1.0.2") {
+		t.Errorf("expected readable update versions, got: %s", out)
+	}
+	if !strings.Contains(out, "Version: v1.0.2") {
+		t.Errorf("expected Version line, got: %s", out)
+	}
+	if !strings.Contains(out, "Revision: bbbbbbbbbbbb") {
+		t.Errorf("expected short revision line, got: %s", out)
+	}
+	if !strings.Contains(out, "Control: /home/me/.lark-cli-memory/bin/memoryctl") {
+		t.Errorf("expected Control line, got: %s", out)
+	}
+}
+
 func TestUpdateMemorySourceCheck_JSON(t *testing.T) {
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
