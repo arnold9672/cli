@@ -205,7 +205,6 @@ lark-memory-cli memory +get --as user \
 ```
 
 `--payload-mode` 支持 `metadata`、`summary`、`full`，默认值是 `full`。
-`--variant-key` 也兼容 meta 字段名形式 `--variant_key`。
 
 ## 排障
 
