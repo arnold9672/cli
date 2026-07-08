@@ -235,6 +235,9 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 			"previous_revision": result.PreviousRevision,
 			"current_revision":  result.CurrentRevision,
 		}
+		if result.ControlPath != "" {
+			out["control_path"] = result.ControlPath
+		}
 		if result.RemoteRevision != "" {
 			out["remote_revision"] = result.RemoteRevision
 		}
@@ -262,6 +265,9 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 	fmt.Fprintf(io.ErrOut, "%s %s\n", symOK(), message)
 	fmt.Fprintf(io.ErrOut, "  Source:  %s\n", result.SourceDir)
 	fmt.Fprintf(io.ErrOut, "  Binary:  %s\n", result.BinaryPath)
+	if result.ControlPath != "" {
+		fmt.Fprintf(io.ErrOut, "  Control: %s\n", result.ControlPath)
+	}
 	fmt.Fprintf(io.ErrOut, "  Wrapper: %s\n", result.WrapperPath)
 	if len(result.SkillsSynced) > 0 {
 		fmt.Fprintf(io.ErrOut, "  Skills:  synced %d skill directories\n", len(result.SkillsSynced))

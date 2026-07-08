@@ -40,6 +40,7 @@ type MemoryUpdateResult struct {
 	SourceDir        string
 	BinaryPath       string
 	WrapperPath      string
+	ControlPath      string
 	PreviousRevision string
 	CurrentRevision  string
 	RemoteRevision   string
@@ -141,10 +142,17 @@ func (u *Updater) UpdateMemorySource(opts MemoryUpdateOptions) (*MemoryUpdateRes
 	if err := buildMemoryBinary(opts.SourceDir, opts.AppDir, result.BinaryPath, strings.TrimSpace(modulePath), result.Version); err != nil {
 		return nil, err
 	}
-	if err := writeMemoryWrapper(opts.AppDir, opts.WrapperPath); err != nil {
+	controlPath, err := syncMemoryControl(opts.SourceDir)
+	if err != nil {
 		return nil, err
 	}
-	synced, warning := syncMemorySkills(opts.SourceDir)
+	result.ControlPath = controlPath
+	wrapperPath, err := syncMemoryWrapperPreservingState(opts.AppDir, opts.WrapperPath)
+	if err != nil {
+		return nil, err
+	}
+	result.WrapperPath = wrapperPath
+	synced, warning := syncMemorySkillsPreservingState(opts.SourceDir)
 	result.SkillsSynced = synced
 	result.SkillsWarning = warning
 	return result, nil
@@ -233,7 +241,56 @@ func writeMemoryWrapper(appDir, wrapperPath string) error {
 	return nil
 }
 
-func syncMemorySkills(sourceDir string) ([]string, string) {
+func syncMemoryControl(sourceDir string) (string, error) {
+	src := filepath.Join(sourceDir, "scripts", "memoryctl.sh")
+	info, err := vfs.Stat(src)
+	if err != nil {
+		return "", fmt.Errorf("copy memoryctl source %q: %w", src, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("copy memoryctl source %q: not a file", src)
+	}
+	dst := filepath.Join(sourceDir, "bin", "memoryctl")
+	if err := vfs.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", fmt.Errorf("create memoryctl dir %q: %w", filepath.Dir(dst), err)
+	}
+	data, err := vfs.ReadFile(src)
+	if err != nil {
+		return "", fmt.Errorf("read memoryctl source %q: %w", src, err)
+	}
+	tmp := dst + fmt.Sprintf(".tmp.%d", os.Getpid())
+	_ = vfs.Remove(tmp)
+	if err := vfs.WriteFile(tmp, data, 0o755); err != nil {
+		return "", fmt.Errorf("write memoryctl %q: %w", tmp, err)
+	}
+	if err := vfs.Rename(tmp, dst); err != nil {
+		_ = vfs.Remove(tmp)
+		return "", fmt.Errorf("replace memoryctl %q: %w", dst, err)
+	}
+	return dst, nil
+}
+
+func syncMemoryWrapperPreservingState(appDir, wrapperPath string) (string, error) {
+	disabledPath := disabledSiblingPath(wrapperPath)
+	state, err := activeDisabledState(wrapperPath, disabledPath)
+	if err != nil {
+		return "", err
+	}
+	switch state {
+	case "active":
+		return wrapperPath, writeMemoryWrapper(appDir, wrapperPath)
+	case "disabled":
+		return disabledPath, writeMemoryWrapper(appDir, disabledPath)
+	case "missing":
+		return wrapperPath, writeMemoryWrapper(appDir, wrapperPath)
+	case "conflict":
+		return "", fmt.Errorf("wrapper exists in both active and disabled locations: %q and %q", wrapperPath, disabledPath)
+	default:
+		return "", fmt.Errorf("unknown wrapper state %q", state)
+	}
+}
+
+func syncMemorySkillsPreservingState(sourceDir string) ([]string, string) {
 	home, err := vfs.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Sprintf("resolve home dir: %v", err)
@@ -242,23 +299,97 @@ func syncMemorySkills(sourceDir string) ([]string, string) {
 	var warnings []string
 	roots := []string{filepath.Join(home, ".agents", "skills"), filepath.Join(home, ".codex", "skills")}
 	for _, root := range roots {
-		if err := copyDirAtomic(filepath.Join(sourceDir, "skills", "lark-memory"), filepath.Join(root, "lark-memory")); err != nil {
-			warnings = append(warnings, err.Error())
-			continue
-		}
-		synced = append(synced, filepath.Join(root, "lark-memory"))
-		shared := filepath.Join(root, "lark-shared")
-		if _, err := vfs.Stat(shared); os.IsNotExist(err) {
-			if err := copyDirAtomic(filepath.Join(sourceDir, "skills", "lark-shared"), shared); err != nil {
-				warnings = append(warnings, err.Error())
-			} else {
-				synced = append(synced, shared)
-			}
-		} else if err != nil {
-			warnings = append(warnings, fmt.Sprintf("check %q: %v", shared, err))
-		}
+		rootSynced, rootWarnings := syncMemorySkillRootPreservingState(sourceDir, root)
+		synced = append(synced, rootSynced...)
+		warnings = append(warnings, rootWarnings...)
 	}
 	return synced, strings.Join(warnings, "; ")
+}
+
+func syncMemorySkillRootPreservingState(sourceDir, root string) ([]string, []string) {
+	memorySrc := filepath.Join(sourceDir, "skills", "lark-memory")
+	memoryActive := filepath.Join(root, "lark-memory")
+	memoryDisabled := filepath.Join(root, ".disabled", "lark-memory")
+	state, err := activeDisabledState(memoryActive, memoryDisabled)
+	if err != nil {
+		return nil, []string{err.Error()}
+	}
+
+	var synced []string
+	var warnings []string
+	switch state {
+	case "active":
+		if err := copyDirAtomic(memorySrc, memoryActive); err != nil {
+			warnings = append(warnings, err.Error())
+			return synced, warnings
+		}
+		synced = append(synced, memoryActive)
+	case "disabled":
+		if err := copyDirAtomic(memorySrc, memoryDisabled); err != nil {
+			warnings = append(warnings, err.Error())
+			return synced, warnings
+		}
+		synced = append(synced, memoryDisabled)
+	case "missing":
+		if err := copyDirAtomic(memorySrc, memoryActive); err != nil {
+			warnings = append(warnings, err.Error())
+			return synced, warnings
+		}
+		synced = append(synced, memoryActive)
+	case "conflict":
+		warnings = append(warnings, fmt.Sprintf("skill exists in both active and disabled locations: %q and %q", memoryActive, memoryDisabled))
+		return synced, warnings
+	default:
+		warnings = append(warnings, fmt.Sprintf("unknown skill state %q for %q", state, memoryActive))
+		return synced, warnings
+	}
+
+	shared := filepath.Join(root, "lark-shared")
+	if _, err := vfs.Stat(shared); os.IsNotExist(err) {
+		if err := copyDirAtomic(filepath.Join(sourceDir, "skills", "lark-shared"), shared); err != nil {
+			warnings = append(warnings, err.Error())
+		} else {
+			synced = append(synced, shared)
+		}
+	} else if err != nil {
+		warnings = append(warnings, fmt.Sprintf("check %q: %v", shared, err))
+	}
+	return synced, warnings
+}
+
+func activeDisabledState(active, disabled string) (string, error) {
+	activeExists, err := pathExists(active)
+	if err != nil {
+		return "", fmt.Errorf("check active path %q: %w", active, err)
+	}
+	disabledExists, err := pathExists(disabled)
+	if err != nil {
+		return "", fmt.Errorf("check disabled path %q: %w", disabled, err)
+	}
+	switch {
+	case activeExists && disabledExists:
+		return "conflict", nil
+	case activeExists:
+		return "active", nil
+	case disabledExists:
+		return "disabled", nil
+	default:
+		return "missing", nil
+	}
+}
+
+func pathExists(path string) (bool, error) {
+	if _, err := vfs.Stat(path); err == nil {
+		return true, nil
+	} else if os.IsNotExist(err) {
+		return false, nil
+	} else {
+		return false, err
+	}
+}
+
+func disabledSiblingPath(path string) string {
+	return filepath.Join(filepath.Dir(path), ".disabled", filepath.Base(path))
 }
 
 func copyDirAtomic(src, dst string) error {

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.2] - 2026-07-08
+
+### Features
+
+- **memory**: Add `memoryctl status/enable/disable` for hot-plugging `lark-memory-cli` and `lark-memory` skills.
+
+### Changed
+
+- **memory**: Refresh `memoryctl` during source updates and preserve enabled or disabled wrapper/skill state.
+
 ## [v1.0.60] - 2026-06-29
 
 ### Features

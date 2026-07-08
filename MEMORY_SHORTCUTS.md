@@ -62,32 +62,10 @@ mkdir -p "$prefix/bin" "$app_dir"
     -o "$app_dir/lark-cli" .
 )
 
-{
-  printf "%s\n" "#!/usr/bin/env bash"
-  printf "%s\n" "export LARKSUITE_CLI_OPEN_BASE_URL=\"\${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}\""
-  printf "%s\n" "export LARKSUITE_CLI_REMOTE_META=\"\${LARKSUITE_CLI_REMOTE_META:-off}\""
-  printf "%s\n" "exec \"$app_dir/lark-cli\" \"\$@\""
-} > "$wrapper"
-chmod +x "$wrapper"
-
-sync_skill() {
-  src="$1"
-  dst_root="$2"
-  skill_name="$(basename "$src")"
-  tmp="$dst_root/.${skill_name}.tmp.$$"
-  mkdir -p "$dst_root"
-  rm -rf "$tmp"
-  cp -R "$src" "$tmp"
-  rm -rf "$dst_root/$skill_name"
-  mv "$tmp" "$dst_root/$skill_name"
-}
-
-for skill_root in "$HOME/.agents/skills" "$HOME/.codex/skills"; do
-  sync_skill "$dir/skills/lark-memory" "$skill_root"
-  if [ ! -e "$skill_root/lark-shared" ]; then
-    sync_skill "$dir/skills/lark-shared" "$skill_root"
-  fi
-done
+mkdir -p "$dir/bin"
+cp "$dir/scripts/memoryctl.sh" "$dir/bin/memoryctl"
+chmod +x "$dir/bin/memoryctl"
+LARK_CLI_MEMORY_DIR="$dir" LARK_CLI_PREFIX="$prefix" "$dir/bin/memoryctl" enable
 
 shell_rc="$HOME/.zshrc"
 grep -qxF "export PATH=\"$prefix/bin:\$PATH\"" "$shell_rc" 2>/dev/null || echo "export PATH=\"$prefix/bin:\$PATH\"" >> "$shell_rc"
@@ -102,7 +80,7 @@ lark-memory-cli --version
 - 拉取 `jhn_memory` 分支到 `$HOME/.lark-cli-memory`。
 - 自动选择一个可用的 Go 1.23+，并清理旧 `GOROOT` 对构建的影响。
 - 直接执行 `go build`，实际二进制默认放到 `$HOME/.local/libexec/lark-memory-cli/lark-cli`。
-- 生成 `$HOME/.local/bin/lark-memory-cli` wrapper。
+- 安装 `$HOME/.lark-cli-memory/bin/memoryctl`，并用它生成 `$HOME/.local/bin/lark-memory-cli` wrapper。
 - 同步 `lark-memory` skill 到 `$HOME/.agents/skills/lark-memory` 和
   `$HOME/.codex/skills/lark-memory`。
 - 如果目标 skill root 下还没有 `lark-shared`，会同步一份 `lark-shared` 作为
@@ -135,6 +113,44 @@ export GO_BIN="/path/to/go"
 export LARKSUITE_CLI_CONFIG_DIR="$HOME/.config/lark-memory-cli"
 ```
 
+## 热插拔和状态
+
+安装脚本会同时安装一个控制命令，专门用于对比「Agent 能看到 Memory CLI」和
+「Agent 看不到 Memory CLI」两种实验状态：
+
+```bash
+$HOME/.lark-cli-memory/bin/memoryctl status
+```
+
+常用操作：
+
+```bash
+# 查看状态，JSON 适合脚本或 Agent 读取
+$HOME/.lark-cli-memory/bin/memoryctl status --json
+
+# 启用 wrapper 和 lark-memory skill
+$HOME/.lark-cli-memory/bin/memoryctl enable
+
+# 停用 wrapper 和 skill，保留源码、二进制、登录态和配置
+$HOME/.lark-cli-memory/bin/memoryctl disable
+
+# 只隐藏 skill，保留 lark-memory-cli 命令供手动测试
+$HOME/.lark-cli-memory/bin/memoryctl disable --skills-only
+```
+
+状态含义：
+
+- `enabled`：`lark-memory-cli` wrapper 在 `$HOME/.local/bin`，`lark-memory`
+  skill 在 Codex/Agent 可扫描目录。
+- `disabled`：wrapper 和 `lark-memory` skill 都被移到 `.disabled` 目录，Agent
+  不会主动看到 Memory CLI。
+- `skills_disabled`：wrapper 仍可用，但 `lark-memory` skill 已隐藏，适合人工保留命令
+  但不让 Agent 自动发现能力。
+- `partial`：active 和 `.disabled` 目录同时存在，或只有一部分 skill root 被切换，
+  需要人工检查。
+
+Codex/Agent 通常只在会话启动时扫描 skill，切换后请重启或新开会话。
+
 ## 升级
 
 安装完成后，后续升级可以直接执行：
@@ -149,9 +165,10 @@ lark-memory-cli --update
 - 二进制：`${LARK_CLI_PREFIX:-$HOME/.local}/libexec/lark-memory-cli/lark-cli`
 - wrapper：`${LARK_CLI_PREFIX:-$HOME/.local}/bin/lark-memory-cli`
 
-它会拉取 `jhn_memory` 分支、重新构建二进制、重写 wrapper，并同步
-`lark-memory` skill 到 `$HOME/.agents/skills/lark-memory` 和
-`$HOME/.codex/skills/lark-memory`。
+它会拉取 `jhn_memory` 分支、重新构建二进制、刷新
+`$HOME/.lark-cli-memory/bin/memoryctl`，并按当前热插拔状态同步 wrapper 和
+`lark-memory` skill：启用时更新启用路径，停用时更新 `.disabled` 路径，不会因为升级
+自动启用。
 
 只检查是否有新提交，不执行安装：
 

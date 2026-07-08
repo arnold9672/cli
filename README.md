@@ -60,32 +60,10 @@ mkdir -p "$prefix/bin" "$app_dir"
     -o "$app_dir/lark-cli" .
 )
 
-{
-  printf "%s\n" "#!/usr/bin/env bash"
-  printf "%s\n" "export LARKSUITE_CLI_OPEN_BASE_URL=\"\${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}\""
-  printf "%s\n" "export LARKSUITE_CLI_REMOTE_META=\"\${LARKSUITE_CLI_REMOTE_META:-off}\""
-  printf "%s\n" "exec \"$app_dir/lark-cli\" \"\$@\""
-} > "$wrapper"
-chmod +x "$wrapper"
-
-sync_skill() {
-  src="$1"
-  dst_root="$2"
-  skill_name="$(basename "$src")"
-  tmp="$dst_root/.${skill_name}.tmp.$$"
-  mkdir -p "$dst_root"
-  rm -rf "$tmp"
-  cp -R "$src" "$tmp"
-  rm -rf "$dst_root/$skill_name"
-  mv "$tmp" "$dst_root/$skill_name"
-}
-
-for skill_root in "$HOME/.agents/skills" "$HOME/.codex/skills"; do
-  sync_skill "$dir/skills/lark-memory" "$skill_root"
-  if [ ! -e "$skill_root/lark-shared" ]; then
-    sync_skill "$dir/skills/lark-shared" "$skill_root"
-  fi
-done
+mkdir -p "$dir/bin"
+cp "$dir/scripts/memoryctl.sh" "$dir/bin/memoryctl"
+chmod +x "$dir/bin/memoryctl"
+LARK_CLI_MEMORY_DIR="$dir" LARK_CLI_PREFIX="$prefix" "$dir/bin/memoryctl" enable
 
 shell_rc="$HOME/.zshrc"
 grep -qxF "export PATH=\"$prefix/bin:\$PATH\"" "$shell_rc" 2>/dev/null || echo "export PATH=\"$prefix/bin:\$PATH\"" >> "$shell_rc"
@@ -112,14 +90,42 @@ export GO_BIN="/path/to/go"
 
 默认会复用现有配置和用户登录态。如果希望完全隔离配置，可以额外设置：
 
+```bash
+export LARKSUITE_CLI_CONFIG_DIR="$HOME/.config/lark-memory-cli"
+```
+
 安装脚本也会把 `lark-memory` skill 同步到 `$HOME/.agents/skills/lark-memory`
 和 `$HOME/.codex/skills/lark-memory`。如果目标目录缺少 `lark-shared`，会补一份
 作为依赖。Codex/Agent 的 skill 列表通常在会话启动时加载；安装后命令立即可用，
 但 `lark-memory` 要出现在 skill 列表里，需要重启或新开一个 Codex/Agent 会话。
 
+## 热插拔和状态
+
+安装脚本会同时安装一个控制命令：
+
 ```bash
-export LARKSUITE_CLI_CONFIG_DIR="$HOME/.config/lark-memory-cli"
+$HOME/.lark-cli-memory/bin/memoryctl status
 ```
+
+常用操作：
+
+```bash
+# 查看当前是否启用，JSON 适合脚本或 Agent 读取
+$HOME/.lark-cli-memory/bin/memoryctl status --json
+
+# 启用 lark-memory-cli wrapper 和 lark-memory skill
+$HOME/.lark-cli-memory/bin/memoryctl enable
+
+# 停用 wrapper 和 skill，但保留源码、二进制、登录态和配置
+$HOME/.lark-cli-memory/bin/memoryctl disable
+
+# 只隐藏 skill，保留 lark-memory-cli 命令供手动测试
+$HOME/.lark-cli-memory/bin/memoryctl disable --skills-only
+```
+
+`disable` 会把 wrapper 移到 `$HOME/.local/bin/.disabled/lark-memory-cli`，并把
+`lark-memory` skill 移到各 skill root 的 `.disabled/lark-memory`。重新 `enable`
+会原路恢复。Codex/Agent 通常只在会话启动时扫描 skill，切换后请重启或新开会话。
 
 ## 升级
 
@@ -130,8 +136,10 @@ lark-memory-cli --update
 ```
 
 这个命令会拉取安装目录中的 `jhn_memory` 分支、重新构建
-`$HOME/.local/libexec/lark-memory-cli/lark-cli`、重写 wrapper，并同步
-`lark-memory` skill 到 Codex/Agent 的 skill 目录。
+`$HOME/.local/libexec/lark-memory-cli/lark-cli`、刷新
+`$HOME/.lark-cli-memory/bin/memoryctl`，并按当前热插拔状态同步 wrapper 和
+`lark-memory` skill：启用时更新启用路径，停用时更新 `.disabled` 路径，不会因为升级
+自动启用。
 
 只检查是否有新提交，不执行安装：
 

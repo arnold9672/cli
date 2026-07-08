@@ -105,6 +105,123 @@ func TestDetectInstallMethodMemorySource(t *testing.T) {
 	}
 }
 
+func TestSyncMemoryWrapperPreservingStateKeepsDisabledWrapper(t *testing.T) {
+	dir := t.TempDir()
+	appDir := filepath.Join(dir, "app")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatalf("mkdir app dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "lark-cli"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write app binary: %v", err)
+	}
+
+	wrapper := filepath.Join(dir, "bin", "lark-memory-cli")
+	disabled := disabledSiblingPath(wrapper)
+	if err := os.MkdirAll(filepath.Dir(disabled), 0o755); err != nil {
+		t.Fatalf("mkdir disabled wrapper dir: %v", err)
+	}
+	if err := os.WriteFile(disabled, []byte("old wrapper"), 0o755); err != nil {
+		t.Fatalf("write disabled wrapper: %v", err)
+	}
+
+	got, err := syncMemoryWrapperPreservingState(appDir, wrapper)
+	if err != nil {
+		t.Fatalf("syncMemoryWrapperPreservingState() error: %v", err)
+	}
+	if got != disabled {
+		t.Fatalf("wrapper path = %q, want disabled path %q", got, disabled)
+	}
+	if _, err := os.Stat(wrapper); !os.IsNotExist(err) {
+		t.Fatalf("active wrapper exists after disabled sync: %v", err)
+	}
+	data, err := os.ReadFile(disabled)
+	if err != nil {
+		t.Fatalf("read disabled wrapper: %v", err)
+	}
+	if !strings.Contains(string(data), "open.feishu-pre.cn") {
+		t.Fatalf("disabled wrapper was not rewritten with pre base URL: %s", data)
+	}
+	if !strings.Contains(string(data), filepath.Join(appDir, "lark-cli")) {
+		t.Fatalf("disabled wrapper does not point at app binary: %s", data)
+	}
+}
+
+func TestSyncMemorySkillsPreservingStateKeepsDisabledSkill(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	sourceDir := t.TempDir()
+	writeTestSkill(t, sourceDir, "lark-memory", "memory-v2")
+	writeTestSkill(t, sourceDir, "lark-shared", "shared-v2")
+
+	agentsDisabled := filepath.Join(home, ".agents", "skills", ".disabled", "lark-memory")
+	if err := os.MkdirAll(agentsDisabled, 0o755); err != nil {
+		t.Fatalf("mkdir disabled agents skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDisabled, "SKILL.md"), []byte("memory-v1"), 0o644); err != nil {
+		t.Fatalf("write old disabled agents skill: %v", err)
+	}
+
+	codexActive := filepath.Join(home, ".codex", "skills", "lark-memory")
+	if err := os.MkdirAll(codexActive, 0o755); err != nil {
+		t.Fatalf("mkdir active codex skill: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(codexActive, "SKILL.md"), []byte("memory-v1"), 0o644); err != nil {
+		t.Fatalf("write old active codex skill: %v", err)
+	}
+
+	synced, warning := syncMemorySkillsPreservingState(sourceDir)
+	if warning != "" {
+		t.Fatalf("syncMemorySkillsPreservingState() warning = %q", warning)
+	}
+	assertFileContent(t, filepath.Join(agentsDisabled, "SKILL.md"), "memory-v2")
+	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "lark-memory")); !os.IsNotExist(err) {
+		t.Fatalf("agents skill was re-enabled unexpectedly: %v", err)
+	}
+	assertFileContent(t, filepath.Join(codexActive, "SKILL.md"), "memory-v2")
+	assertFileContent(t, filepath.Join(home, ".agents", "skills", "lark-shared", "SKILL.md"), "shared-v2")
+	assertFileContent(t, filepath.Join(home, ".codex", "skills", "lark-shared", "SKILL.md"), "shared-v2")
+
+	wantSynced := []string{
+		agentsDisabled,
+		filepath.Join(home, ".agents", "skills", "lark-shared"),
+		codexActive,
+		filepath.Join(home, ".codex", "skills", "lark-shared"),
+	}
+	for _, want := range wantSynced {
+		if !containsString(synced, want) {
+			t.Fatalf("synced = %#v, missing %q", synced, want)
+		}
+	}
+}
+
+func TestSyncMemoryControlInstallsMemoryctlCopy(t *testing.T) {
+	sourceDir := t.TempDir()
+	scriptDir := filepath.Join(sourceDir, "scripts")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir scripts dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scriptDir, "memoryctl.sh"), []byte("#!/bin/sh\necho ok\n"), 0o644); err != nil {
+		t.Fatalf("write memoryctl source: %v", err)
+	}
+
+	got, err := syncMemoryControl(sourceDir)
+	if err != nil {
+		t.Fatalf("syncMemoryControl() error: %v", err)
+	}
+	want := filepath.Join(sourceDir, "bin", "memoryctl")
+	if got != want {
+		t.Fatalf("control path = %q, want %q", got, want)
+	}
+	info, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat installed memoryctl: %v", err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("memoryctl mode = %v, want 0755", info.Mode().Perm())
+	}
+	assertFileContent(t, want, "#!/bin/sh\necho ok\n")
+}
+
 func TestVerifyBinaryLookPath(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if runtime.GOOS == "windows" {
@@ -202,6 +319,37 @@ func TestVerifyBinaryEmptyOutput(t *testing.T) {
 	if err := New().VerifyBinary("2.0.0"); err == nil {
 		t.Fatal("VerifyBinary(empty output) expected error, got nil")
 	}
+}
+
+func writeTestSkill(t *testing.T, sourceDir, name, content string) {
+	t.Helper()
+	dir := filepath.Join(sourceDir, "skills", name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir test skill %s: %v", name, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write test skill %s: %v", name, err)
+	}
+}
+
+func assertFileContent(t *testing.T, path, want string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(data) != want {
+		t.Fatalf("%s = %q, want %q", path, data, want)
+	}
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSkillsCommandsUseExpectedArgs(t *testing.T) {

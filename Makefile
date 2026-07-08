@@ -51,6 +51,7 @@ script-test:
 	bash scripts/resolve-changed-from.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/semantic-review-workflow.test.sh
+	bash scripts/memoryctl.test.sh
 	$(NODE) --test scripts/semantic-review-verify-artifact.test.js scripts/pr-quality-summary.test.js scripts/semantic-review-publish.test.js scripts/ci-quality-summary-publish.test.js
 
 # ./extension/... keeps the public plugin SDK in the default test matrix.
