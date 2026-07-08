@@ -117,6 +117,9 @@ func (u *Updater) UpdateMemorySource(opts MemoryUpdateOptions) (*MemoryUpdateRes
 	if _, err := gitOutput(opts.SourceDir, memoryUpdateGitTimeout, "pull", "--ff-only", "origin", opts.Branch); err != nil {
 		return nil, err
 	}
+	if _, err := gitOutput(opts.SourceDir, memoryUpdateGitTimeout, "fetch", "--tags", "--force", "origin"); err != nil {
+		return nil, err
+	}
 
 	current, err := gitOutput(opts.SourceDir, memoryUpdateGitTimeout, "rev-parse", "HEAD")
 	if err != nil {
