@@ -114,8 +114,8 @@ func TestMemoryListExecuteUnwrapsData(t *testing.T) {
 	if err := runMemoryShortcut(t, MemoryList, []string{"+list", "--as", "user", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if got := stub.CapturedHeaders.Get("x-tt-env"); got != memoryTTEnv {
-		t.Fatalf("x-tt-env = %q, want %q", got, memoryTTEnv)
+	if got := stub.CapturedHeaders.Get("x-tt-env"); got != defaultMemoryTTEnv {
+		t.Fatalf("x-tt-env = %q, want %q", got, defaultMemoryTTEnv)
 	}
 	got := stdout.String()
 	if !strings.Contains(got, `"memories"`) || !strings.Contains(got, "personal_memory_snapshot") {
@@ -153,11 +153,33 @@ func TestMemoryGetExecuteSendsFullPayloadMode(t *testing.T) {
 	if !bytes.Contains(stub.CapturedBody, []byte(`"payload_mode":"full"`)) {
 		t.Fatalf("request body should include default payload_mode=full, got %s", string(stub.CapturedBody))
 	}
-	if got := stub.CapturedHeaders.Get("x-tt-env"); got != memoryTTEnv {
-		t.Fatalf("x-tt-env = %q, want %q", got, memoryTTEnv)
+	if got := stub.CapturedHeaders.Get("x-tt-env"); got != defaultMemoryTTEnv {
+		t.Fatalf("x-tt-env = %q, want %q", got, defaultMemoryTTEnv)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"memory_key"`)) {
 		t.Fatalf("stdout should include memory data, got %s", stdout.String())
+	}
+}
+
+func TestMemoryExecuteSendsOverrideTTEnv(t *testing.T) {
+	t.Setenv(envMemoryTTEnv, "custom_memory_lane")
+	f, stdout, _, reg := cmdutil.TestFactory(t, memoryTestConfig(t))
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/search/v2/memory_hub/list_memory",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"memories": []interface{}{}},
+		},
+	}
+	reg.Register(stub)
+
+	if err := runMemoryShortcut(t, MemoryList, []string{"+list", "--as", "user", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := stub.CapturedHeaders.Get("x-tt-env"); got != "custom_memory_lane" {
+		t.Fatalf("x-tt-env = %q, want custom_memory_lane", got)
 	}
 }
 

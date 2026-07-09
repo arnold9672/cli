@@ -138,8 +138,8 @@ func TestSyncMemoryWrapperPreservingStateKeepsDisabledWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read disabled wrapper: %v", err)
 	}
-	if !strings.Contains(string(data), "open.feishu-pre.cn") {
-		t.Fatalf("disabled wrapper was not rewritten with pre base URL: %s", data)
+	if strings.Contains(string(data), "open.feishu-pre.cn") {
+		t.Fatalf("disabled wrapper should not force pre base URL: %s", data)
 	}
 	if !strings.Contains(string(data), filepath.Join(appDir, "lark-cli")) {
 		t.Fatalf("disabled wrapper does not point at app binary: %s", data)

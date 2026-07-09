@@ -78,7 +78,6 @@ write_wrapper() {
   mkdir -p "$(dirname "$target")"
   {
     printf '%s\n' '#!/usr/bin/env bash'
-    printf '%s\n' 'export LARKSUITE_CLI_OPEN_BASE_URL="${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}"'
     printf '%s\n' 'export LARKSUITE_CLI_REMOTE_META="${LARKSUITE_CLI_REMOTE_META:-off}"'
     printf 'exec "%s" "$@"\n' "$APP_BIN"
   } > "$target"

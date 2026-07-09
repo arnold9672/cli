@@ -30,5 +30,5 @@ lark-cli search <resource> <method> [flags] # 调用 API
 
 | 方法 | 所需 scope |
 |------|-----------|
-| `memory_hub.get_memory` | `search:message` |
-| `memory_hub.list_memory` | `search:message` |
+| `memory_hub.get_memory` | `memory:hub` |
+| `memory_hub.list_memory` | `memory:hub` |

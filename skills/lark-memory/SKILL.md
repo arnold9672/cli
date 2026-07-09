@@ -63,7 +63,7 @@ lark-memory-cli memory +get --memory-key <memory_key> --payload-mode metadata --
 ## 权限与身份
 
 - 只使用 user 身份：`--as user`。
-- 当前 scope：`search:message`。
+- 当前 scope：`memory:hub`。
 - 如果报 scope 或登录问题，按 `lark-shared` 的用户授权恢复流程处理；不要切到 bot。
 
 ## 输出使用规则

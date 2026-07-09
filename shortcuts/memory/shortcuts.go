@@ -7,9 +7,10 @@ import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 const (
 	memoryService       = "memory"
-	memoryScope         = "search:message"
+	memoryScope         = "memory:hub"
 	memoryAPIBasePath   = "/open-apis/search/v2/memory_hub"
-	memoryTTEnv         = "ppe_memory_hub"
+	defaultMemoryTTEnv  = "ppe_memory_hub"
+	envMemoryTTEnv      = "LARKSUITE_CLI_MEMORY_TT_ENV"
 	payloadModeMetadata = "metadata"
 	payloadModeSummary  = "summary"
 	payloadModeFull     = "full"

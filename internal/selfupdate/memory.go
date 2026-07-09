@@ -227,7 +227,6 @@ func writeMemoryWrapper(appDir, wrapperPath string) error {
 	binary := filepath.Join(appDir, "lark-cli")
 	content := strings.Join([]string{
 		"#!/usr/bin/env bash",
-		`export LARKSUITE_CLI_OPEN_BASE_URL="${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}"`,
 		`export LARKSUITE_CLI_REMOTE_META="${LARKSUITE_CLI_REMOTE_META:-off}"`,
 		fmt.Sprintf("exec %q \"$@\"", binary),
 		"",

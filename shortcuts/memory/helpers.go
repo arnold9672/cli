@@ -5,6 +5,8 @@ package memory
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -17,16 +19,20 @@ func callMemoryAPITyped(rctx *common.RuntimeContext, method, apiPath string, bod
 		ApiPath:    apiPath,
 		Body:       body,
 	}
-	resp, err := rctx.DoAPIWithHeaders(req, memoryPPEHeaders())
+	resp, err := rctx.DoAPIWithHeaders(req, memoryExtraHeaders())
 	if err != nil {
 		return nil, err
 	}
 	return rctx.ClassifyAPIResponse(resp)
 }
 
-func memoryPPEHeaders() http.Header {
+func memoryExtraHeaders() http.Header {
+	ttEnv := strings.TrimSpace(os.Getenv(envMemoryTTEnv))
+	if ttEnv == "" {
+		ttEnv = defaultMemoryTTEnv
+	}
 	h := make(http.Header)
-	h.Set("x-tt-env", memoryTTEnv)
+	h.Set("x-tt-env", ttEnv)
 	return h
 }
 

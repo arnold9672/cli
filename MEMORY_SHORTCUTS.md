@@ -5,12 +5,11 @@
 - `lark-memory-cli memory +list`
 - `lark-memory-cli memory +get`
 
-这两个 shortcut 使用用户身份调用，需要 `search:message` scope。当前 Memory
-Hub 后端运行在 pre OpenAPI 域名和 `ppe_memory_hub` 泳道下，`x-tt-env:
-ppe_memory_hub` 请求头已经内置在 shortcut 中。
+这两个 shortcut 使用用户身份调用，需要 `memory:hub` scope。当前 Memory
+Hub 默认调用线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`。
 
 安装脚本不会覆盖用户已有的 `lark-cli`。它会安装一个独立命令
-`lark-memory-cli`，并且只在这个命令内部把 OpenAPI 域名指向 pre。
+`lark-memory-cli`。
 默认情况下，`lark-memory-cli` 复用现有 `lark-cli` 的配置和用户登录态；如果你想
 完全隔离配置，可以运行时额外设置 `LARKSUITE_CLI_CONFIG_DIR`。
 
@@ -86,7 +85,7 @@ lark-memory-cli --version
 - 如果目标 skill root 下还没有 `lark-shared`，会同步一份 `lark-shared` 作为
   `lark-memory` 的依赖。
 - 向 `~/.zshrc` 写入 `$HOME/.local/bin` 到 `PATH`。
-- 不改写已有 `lark-cli`，也不向 shell 写入全局 pre 域名。
+- 不改写已有 `lark-cli`，也不向 shell 写入 OpenAPI 域名覆盖。
 
 注意：Codex/Agent 的 skill 列表通常在会话启动时加载。安装后命令可以立即使用；
 如果希望 `lark-memory` 出现在当前工具的 skill 列表里，请重启或新开一个 Codex/Agent
@@ -187,7 +186,7 @@ lark-memory-cli auth login --recommend
 lark-memory-cli auth status
 ```
 
-应用和用户授权必须包含 `search:message`。如果授权缺失，先确认应用 scope 已经开通，
+应用和用户授权必须包含 `memory:hub`。如果授权缺失，先确认应用 scope 已经开通，
 再重新执行登录。
 
 ## 查看 Memory 列表
@@ -248,7 +247,7 @@ lark-memory-cli memory +get --as user \
 
 ## 排障
 
-确认 `lark-memory-cli` wrapper 内部使用的是 pre 域名：
+确认 `lark-memory-cli` wrapper 指向独立的 memory binary，且没有强制覆盖 OpenAPI 域名：
 
 ```bash
 head -n 5 "$(command -v lark-memory-cli)"
@@ -257,17 +256,21 @@ head -n 5 "$(command -v lark-memory-cli)"
 期望能看到：
 
 ```text
-LARKSUITE_CLI_OPEN_BASE_URL="${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}"
+LARKSUITE_CLI_REMOTE_META="${LARKSUITE_CLI_REMOTE_META:-off}"
 ```
 
-如果 `memory +list` 返回 `2200 Internal Error`，最常见原因是请求没有带 PPE
-泳道头。本分支的 memory shortcuts 会自动发送 `x-tt-env: ppe_memory_hub`；如果仍然报错，
-请确认已经从 `jhn_memory` 分支重新构建并安装。
+默认请求走线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`。如果需要临时回到
+pre 域名验证，可以显式设置：
+
+```bash
+export LARKSUITE_CLI_OPEN_BASE_URL="https://open.feishu-pre.cn"
+export LARKSUITE_CLI_MEMORY_TT_ENV="ppe_memory_hub"
+```
 
 等价的原始请求形态：
 
 ```bash
-curl -i -X GET 'https://open.feishu-pre.cn/open-apis/search/v2/memory_hub/list_memory' \
+curl -i -X GET 'https://open.feishu.cn/open-apis/search/v2/memory_hub/list_memory' \
   -H "Authorization: Bearer <USER_ACCESS_TOKEN>" \
   -H 'x-tt-env: ppe_memory_hub' \
   -H 'Content-Type: application/json' \

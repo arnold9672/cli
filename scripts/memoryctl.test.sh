@@ -46,7 +46,9 @@ assert_contains "$status" '"status": "disabled"'
 status="$(run_memoryctl enable --json)"
 assert_contains "$status" '"status": "enabled"'
 test -x "$prefix/bin/lark-memory-cli" || fail "active wrapper was not created"
-grep -Fq 'open.feishu-pre.cn' "$prefix/bin/lark-memory-cli" || fail "wrapper does not set pre OpenAPI domain"
+if grep -Fq 'open.feishu-pre.cn' "$prefix/bin/lark-memory-cli"; then
+  fail "wrapper should not force pre OpenAPI domain"
+fi
 test -f "$home/.agents/skills/lark-memory/SKILL.md" || fail "agents memory skill was not enabled"
 test -f "$home/.codex/skills/lark-memory/SKILL.md" || fail "codex memory skill was not enabled"
 test -f "$home/.agents/skills/lark-shared/SKILL.md" || fail "agents shared skill was not installed"

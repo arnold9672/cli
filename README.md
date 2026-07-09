@@ -6,9 +6,9 @@ shortcuts：
 - `lark-memory-cli memory +list`
 - `lark-memory-cli memory +get`
 
-这两个命令使用用户身份调用，需要 `search:message` scope。Memory Hub 当前运行在
-pre OpenAPI 域名和 `ppe_memory_hub` 泳道下；安装脚本会生成独立 wrapper，只在
-`lark-memory-cli` 内部设置 pre 域名和泳道相关运行环境，不覆盖用户已有命令。
+这两个命令使用用户身份调用，需要 `memory:hub` scope。Memory Hub 当前默认调用
+线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`；安装脚本会生成独立
+wrapper，不覆盖用户已有 `lark-cli` 命令。
 
 更完整的安装与排障说明见 [MEMORY_SHORTCUTS.md](./MEMORY_SHORTCUTS.md)。
 
@@ -157,7 +157,7 @@ lark-memory-cli auth login --recommend
 lark-memory-cli auth status
 ```
 
-应用和用户授权必须包含 `search:message`。如果授权缺失，先确认应用 scope 已开通，
+应用和用户授权必须包含 `memory:hub`。如果授权缺失，先确认应用 scope 已开通，
 再重新执行登录。
 
 ## 查看 Memory 列表
@@ -216,7 +216,7 @@ lark-memory-cli memory +get --as user \
 
 ## 排障
 
-确认 wrapper 内部使用的是 pre 域名：
+确认 wrapper 指向独立的 memory binary，且没有强制覆盖 OpenAPI 域名：
 
 ```bash
 head -n 5 "$(command -v lark-memory-cli)"
@@ -225,9 +225,13 @@ head -n 5 "$(command -v lark-memory-cli)"
 期望能看到：
 
 ```text
-LARKSUITE_CLI_OPEN_BASE_URL="${LARKSUITE_CLI_OPEN_BASE_URL:-https://open.feishu-pre.cn}"
+LARKSUITE_CLI_REMOTE_META="${LARKSUITE_CLI_REMOTE_META:-off}"
 ```
 
-如果 `memory +list` 返回 `2200 Internal Error`，最常见原因是请求没有带 PPE
-泳道头。本分支的 memory shortcuts 会自动发送 `x-tt-env: ppe_memory_hub`；如果仍然报错，
-请确认已经从 `jhn_memory` 分支重新构建并安装。
+默认请求走线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`。如果需要临时回到
+pre 域名验证，可以显式设置：
+
+```bash
+export LARKSUITE_CLI_OPEN_BASE_URL="https://open.feishu-pre.cn"
+export LARKSUITE_CLI_MEMORY_TT_ENV="ppe_memory_hub"
+```

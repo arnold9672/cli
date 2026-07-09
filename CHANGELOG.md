@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - **memory**: Refresh `memoryctl` during source updates and preserve enabled or disabled wrapper/skill state.
+- **memory**: Default Memory Hub shortcuts to online OpenAPI while preserving the `x-tt-env: ppe_memory_hub` lane header.
 
 ## [v1.0.60] - 2026-06-29
 
