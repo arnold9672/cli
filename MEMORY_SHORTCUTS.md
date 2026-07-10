@@ -205,7 +205,7 @@ lark-memory-cli memory +list --as user --format json
 
 ```bash
 lark-memory-cli memory +list --as user --format json \
-  --jq '{count: (.data.memories | length), memories: (.data.memories | map({memory_key, name, status, default_variant_key}))}'
+  --jq '{count: (.data.memories | length), memories: (.data.memories | map({memory_key, name, status, variants, default_variant_key}))}'
 ```
 
 当前预期会看到的 memory 包括：
@@ -217,20 +217,25 @@ lark-memory-cli memory +list --as user --format json \
 
 `+get` 默认返回完整 payload。
 
+读取前先根据 `memory +list` 的返回选择 variant：
+
+- 如果 `variants` 中存在 `agentic_v1`，优先传 `--variant-key agentic_v1`。
+- 如果不存在 `agentic_v1`，传 `default_variant_key`；如果该字段为空，可以不传 `--variant-key`。
+
 ```bash
-lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot
+lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --variant-key agentic_v1
 ```
 
 输出 JSON：
 
 ```bash
-lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --format json
+lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --variant-key agentic_v1 --format json
 ```
 
 不打印 payload 内容的安全检查命令：
 
 ```bash
-lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --format json \
+lark-memory-cli memory +get --as user --memory-key personal_memory_snapshot --variant-key agentic_v1 --format json \
   --jq '{memory_key: .data.memory_key, variant_key: .data.variant_key, status: .data.status, payload_type: .data.payload_type, has_payload: (.data.payload != null and .data.payload != "")}'
 ```
 

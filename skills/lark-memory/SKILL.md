@@ -1,6 +1,6 @@
 ---
 name: lark-memory
-version: 0.1.0
+version: 0.1.1
 description: "Memory Hub：读取用户可见的长期记忆、偏好、历史上下文和项目背景。仅用于补充长期上下文，不用于实时事实。"
 metadata:
   requires:
@@ -34,12 +34,15 @@ metadata:
 lark-memory-cli memory +list --as user --format json
 ```
 
-2. 从返回的 `memories[].memory_key` 中选择最小必要项。
+2. 从返回的 `memories[].memory_key` 中选择最小必要项，并按 `variants` 选择读取版本：
+
+   - 如果 `variants` 中存在 `agentic_v1`，优先读取 `agentic_v1`。
+   - 如果不存在 `agentic_v1`，读取 `default_variant_key`；如果该字段为空，再不传 `--variant-key` 走服务端默认值。
 
 3. 读取单个 memory：
 
 ```bash
-lark-memory-cli memory +get --memory-key <memory_key> --as user --format json
+lark-memory-cli memory +get --memory-key <memory_key> --variant-key <variant_key> --as user --format json
 ```
 
 本 fork 中 `+get` 的 `--payload-mode` 默认是 `full`。如只需要元信息或摘要，可以显式传：
@@ -68,7 +71,8 @@ lark-memory-cli memory +get --memory-key <memory_key> --payload-mode metadata --
 
 ## 输出使用规则
 
-- `+list` 重点读取：`memories[].memory_key`、`name`、`default_variant_key`、`status`、`description`、`showcase`。
+- `+list` 重点读取：`memories[].memory_key`、`name`、`variants`、`default_variant_key`、`status`、`description`、`showcase`。
+- 读取 variant 优先级：`agentic_v1` > `default_variant_key` > 服务端默认值；这是 Agent 使用规则，CLI 不会在未传 `--variant-key` 时自动改写。
 - `+get` 重点读取：`memory_key`、`variant_key`、`status`、`payload_type`、`payload`、`metadata`。
 - `payload` 可能是 JSON 字符串，具体结构由 `payload_type` 决定；不要在 CLI 层假设统一 schema。
 - `status != ready` 时，不要把内容当作完整事实使用，应向用户说明 memory 尚未就绪或读取失败。

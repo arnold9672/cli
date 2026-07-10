@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.4] - 2026-07-10
+
+### Changed
+
+- **memory**: Document Agent-side variant selection priority: prefer `agentic_v1`, then `default_variant_key`.
+
 ## [v1.0.2] - 2026-07-08
 
 ### Features
