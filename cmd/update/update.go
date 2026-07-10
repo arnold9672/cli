@@ -279,6 +279,7 @@ func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string
 	if result.SkillsWarning != "" {
 		fmt.Fprintf(io.ErrOut, "%s Skills sync warning: %s\n", symWarn(), result.SkillsWarning)
 	}
+	writeMemorySourceUpgradeNotes(io)
 	fmt.Fprintf(io.ErrOut, "  Restart Codex/Agent sessions to reload updated skills.\n")
 	return nil
 }
@@ -289,6 +290,19 @@ func memorySourceVersionLabel(version, revision string) string {
 		return version
 	}
 	return shortRevision(revision)
+}
+
+func writeMemorySourceUpgradeNotes(io *cmdutil.IOStreams) {
+	fmt.Fprintln(io.ErrOut, "  升级点:")
+	for _, note := range memorySourceUpgradeNotes() {
+		fmt.Fprintf(io.ErrOut, "    - %s\n", note)
+	}
+}
+
+func memorySourceUpgradeNotes() []string {
+	return []string{
+		"Agent 读取 Memory 时优先选择 agentic_v1 版本；没有 agentic_v1 时回退到 default_variant_key。",
+	}
 }
 
 // --- Output helpers ---

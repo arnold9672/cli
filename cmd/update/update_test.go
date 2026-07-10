@@ -330,6 +330,12 @@ func TestUpdateMemorySourceHumanShowsReadableVersion(t *testing.T) {
 	if !strings.Contains(out, "Control: /home/me/.lark-cli-memory/bin/memoryctl") {
 		t.Errorf("expected Control line, got: %s", out)
 	}
+	if !strings.Contains(out, "升级点:") {
+		t.Errorf("expected upgrade notes heading, got: %s", out)
+	}
+	if !strings.Contains(out, "Agent 读取 Memory 时优先选择 agentic_v1 版本；没有 agentic_v1 时回退到 default_variant_key。") {
+		t.Errorf("expected memory variant upgrade note, got: %s", out)
+	}
 }
 
 func TestUpdateMemorySourceCheck_JSON(t *testing.T) {

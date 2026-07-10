@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.5] - 2026-07-10
+
+### Changed
+
+- **memory**: Show Chinese upgrade notes after `lark-memory-cli --update`.
+
 ## [v1.0.4] - 2026-07-10
 
 ### Changed
