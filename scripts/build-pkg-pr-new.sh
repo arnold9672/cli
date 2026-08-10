@@ -89,7 +89,7 @@ cat > "$OUT_DIR/package.json" <<EOF_JSON
   },
   "repository": {
     "type": "git",
-    "url": "git+https://code.byted.org/lark_search/larksuite-cli.git"
+    "url": "git+https://github.com/larksuite/cli.git"
   },
   "license": "MIT",
   "files": [

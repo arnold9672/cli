@@ -14,11 +14,12 @@ wrapper，不覆盖用户已有 `lark-cli` 命令。
 
 ## 一键安装
 
-在具备 Codebase 访问权限和 Go 1.23+ 的 shell 中执行：
+在安装有 Git 和 Go 1.23+ 的 shell 中执行。源码来自公开 GitHub 仓库，
+无需 Codebase 权限或 GitHub 登录：
 
 ```bash
 bash -lc 'set -euo pipefail
-repo="git@code.byted.org:lark_search/larksuite-cli.git"
+repo="https://github.com/arnold9672/cli.git"
 branch="${LARK_CLI_MEMORY_BRANCH:-jhn_memory}"
 dir="${LARK_CLI_MEMORY_DIR:-$HOME/.lark-cli-memory}"
 prefix="${LARK_CLI_PREFIX:-$HOME/.local}"

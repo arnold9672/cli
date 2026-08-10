@@ -82,7 +82,7 @@ Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
 
 Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}{{if not .HasParent}}
 
-Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://code.byted.org/lark_search/larksuite-cli#agent-skills{{end}}
+Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://github.com/larksuite/cli#agent-skills{{end}}
 `
 
 // Execute runs the root command and returns the process exit code.

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	repoURL         = "https://code.byted.org/lark_search/larksuite-cli"
+	repoURL         = "https://github.com/larksuite/cli"
 	maxNpmOutput    = 2000
 	maxStderrDetail = 500
 	osWindows       = "windows"

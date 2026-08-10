@@ -909,11 +909,11 @@ func TestUpdateNpmNotFound_FallsBackToManual(t *testing.T) {
 
 func TestReleaseURL(t *testing.T) {
 	got := releaseURL("2.0.0")
-	if got != "https://code.byted.org/lark_search/larksuite-cli/releases/tag/v2.0.0" {
+	if got != "https://github.com/larksuite/cli/releases/tag/v2.0.0" {
 		t.Errorf("expected version-pinned URL, got: %s", got)
 	}
 	got2 := releaseURL("v1.5.0")
-	if got2 != "https://code.byted.org/lark_search/larksuite-cli/releases/tag/v1.5.0" {
+	if got2 != "https://github.com/larksuite/cli/releases/tag/v1.5.0" {
 		t.Errorf("expected no double v prefix, got: %s", got2)
 	}
 }
