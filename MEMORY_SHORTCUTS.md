@@ -29,6 +29,7 @@ app_dir="$prefix/libexec/lark-memory-cli"
 wrapper="$prefix/bin/lark-memory-cli"
 
 if [ -d "$dir/.git" ]; then
+  git -C "$dir" remote set-url origin "$repo"
   git -C "$dir" fetch origin "$branch"
   git -C "$dir" checkout "$branch"
   git -C "$dir" pull --ff-only origin "$branch"
@@ -77,7 +78,7 @@ lark-memory-cli --version
 
 安装脚本会完成以下事情：
 
-- 拉取 `jhn_memory` 分支到 `$HOME/.lark-cli-memory`。
+- 从公开 GitHub 仓库拉取 `jhn_memory` 分支到 `$HOME/.lark-cli-memory`；已有安装会自动把旧 Codebase `origin` 迁移到 GitHub。
 - 自动选择一个可用的 Go 1.23+，并清理旧 `GOROOT` 对构建的影响。
 - 直接执行 `go build`，实际二进制默认放到 `$HOME/.local/libexec/lark-memory-cli/lark-cli`。
 - 安装 `$HOME/.lark-cli-memory/bin/memoryctl`，并用它生成 `$HOME/.local/bin/lark-memory-cli` wrapper。

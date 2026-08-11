@@ -28,6 +28,7 @@ app_dir="$prefix/libexec/lark-memory-cli"
 wrapper="$prefix/bin/lark-memory-cli"
 
 if [ -d "$dir/.git" ]; then
+  git -C "$dir" remote set-url origin "$repo"
   git -C "$dir" fetch origin "$branch"
   git -C "$dir" checkout "$branch"
   git -C "$dir" pull --ff-only origin "$branch"

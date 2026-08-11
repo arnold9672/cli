@@ -22,6 +22,7 @@ const (
 	memoryUpdateGitTimeout   = 2 * time.Minute
 	memoryUpdateBuildTimeout = 10 * time.Minute
 	memoryModulePath         = "code.byted.org/lark_search/larksuite-cli"
+	memoryDefaultRepoURL     = "https://github.com/arnold9672/cli.git"
 )
 
 // MemoryUpdateOptions describes a lark-memory-cli source-install update.
@@ -80,6 +81,9 @@ func (u *Updater) UpdateMemorySource(opts MemoryUpdateOptions) (*MemoryUpdateRes
 		return nil, err
 	}
 	if err := requireDir(filepath.Join(opts.SourceDir, ".git"), "memory source git metadata"); err != nil {
+		return nil, err
+	}
+	if err := migrateMemoryOrigin(opts.SourceDir); err != nil {
 		return nil, err
 	}
 
@@ -159,6 +163,32 @@ func (u *Updater) UpdateMemorySource(opts MemoryUpdateOptions) (*MemoryUpdateRes
 	result.SkillsSynced = synced
 	result.SkillsWarning = warning
 	return result, nil
+}
+
+func migrateMemoryOrigin(sourceDir string) error {
+	origin, err := gitOutput(sourceDir, memoryUpdateGitTimeout, "remote", "get-url", "origin")
+	if err != nil {
+		return fmt.Errorf("read memory source origin: %w", err)
+	}
+	if !isLegacyMemoryRepoURL(origin) {
+		return nil
+	}
+	if _, err := gitOutput(sourceDir, memoryUpdateGitTimeout, "remote", "set-url", "origin", memoryDefaultRepoURL); err != nil {
+		return fmt.Errorf("migrate memory source origin to %q: %w", memoryDefaultRepoURL, err)
+	}
+	return nil
+}
+
+func isLegacyMemoryRepoURL(rawURL string) bool {
+	normalized := strings.TrimSuffix(strings.TrimSpace(rawURL), ".git")
+	switch normalized {
+	case "git@code.byted.org:lark_search/larksuite-cli",
+		"ssh://git@code.byted.org/lark_search/larksuite-cli",
+		"https://code.byted.org/lark_search/larksuite-cli":
+		return true
+	default:
+		return false
+	}
 }
 
 func requireDir(path, label string) error {
