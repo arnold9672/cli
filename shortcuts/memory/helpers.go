@@ -4,6 +4,7 @@
 package memory
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -14,12 +15,16 @@ import (
 )
 
 func callMemoryAPITyped(rctx *common.RuntimeContext, method, apiPath string, body interface{}) (map[string]interface{}, error) {
+	return callMemoryAPITypedWithContext(rctx, rctx.Ctx(), method, apiPath, body)
+}
+
+func callMemoryAPITypedWithContext(rctx *common.RuntimeContext, callCtx context.Context, method, apiPath string, body interface{}) (map[string]interface{}, error) {
 	req := &larkcore.ApiReq{
 		HttpMethod: method,
 		ApiPath:    apiPath,
 		Body:       body,
 	}
-	resp, err := rctx.DoAPIWithHeaders(req, memoryExtraHeaders())
+	resp, err := rctx.DoAPIWithHeadersContext(callCtx, req, memoryExtraHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +53,12 @@ func unwrapMemoryData(data map[string]interface{}) map[string]interface{} {
 		return nested
 	}
 	if _, ok := nested["memories"]; ok {
+		return nested
+	}
+	if _, ok := nested["nodes"]; ok {
+		return nested
+	}
+	if _, ok := nested["edges"]; ok {
 		return nested
 	}
 	return data

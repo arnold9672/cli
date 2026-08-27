@@ -5,6 +5,7 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -68,12 +69,25 @@ func ValidateJqFlags(jqExpr, outputFlag, format string) error {
 		return nil
 	}
 	if outputFlag != "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --output are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --output are mutually exclusive").WithParam("--jq")
 	}
 	if format != "" && format != "json" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --format %s are mutually exclusive", format)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --format %s are mutually exclusive", format).WithParam("--jq")
 	}
-	return ValidateJqExpression(jqExpr)
+	if err := ValidateJqExpression(jqExpr); err != nil {
+		return withJqParam(err)
+	}
+	return nil
+}
+
+func withJqParam(err error) error {
+	var validationErr *errs.ValidationError
+	if errors.As(err, &validationErr) {
+		return validationErr.WithParam("--jq")
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).
+		WithParam("--jq").
+		WithCause(err)
 }
 
 // ValidateJqExpression checks whether a jq expression is syntactically valid.

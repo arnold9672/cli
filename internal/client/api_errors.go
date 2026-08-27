@@ -74,6 +74,13 @@ func WrapJSONResponseParseError(err error, body []byte) error {
 func classifyNetworkSubtype(err error) errs.Subtype {
 	// (a) Timeout — net.Error.Timeout(), plus the SDK's typed timeout
 	// errors (which do not implement net.Error).
+	// Marked single-attempt SDK requests keep their transport cause behind a
+	// non-net.Error bypass wrapper so the SDK cannot discard it. Inspect that
+	// private carrier before the outer *url.Error, whose Timeout method is false.
+	var singleAttemptErr *singleAttemptError
+	if errors.As(err, &singleAttemptErr) && singleAttemptErr.Timeout() {
+		return errs.SubtypeNetworkTimeout
+	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return errs.SubtypeNetworkTimeout

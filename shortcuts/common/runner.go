@@ -457,6 +457,12 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 // headers merged with shortcut metadata headers. Use this when an endpoint
 // needs an extra routing header such as x-tt-env.
 func (ctx *RuntimeContext) DoAPIWithHeaders(req *larkcore.ApiReq, headers http.Header, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	return ctx.DoAPIWithHeadersContext(ctx.ctx, req, headers, opts...)
+}
+
+// DoAPIWithHeadersContext executes a raw Lark SDK request with an explicit
+// call context while preserving the standard shortcut headers and auth path.
+func (ctx *RuntimeContext) DoAPIWithHeadersContext(callCtx context.Context, req *larkcore.ApiReq, headers http.Header, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
@@ -468,7 +474,7 @@ func (ctx *RuntimeContext) DoAPIWithHeaders(req *larkcore.ApiReq, headers http.H
 	if len(mergedHeaders) > 0 {
 		opts = append(opts, larkcore.WithHeaders(mergedHeaders))
 	}
-	return ac.DoSDKRequest(ctx.ctx, req, ctx.As(), opts...)
+	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
 }
 
 // DoAPIAsBot executes a raw Lark SDK request using bot identity (tenant access token),
@@ -689,6 +695,44 @@ func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
 	ctx.emit(data, meta, true, true)
 }
 
+// OutStream emits one content-safe streaming output window.
+func (ctx *RuntimeContext) OutStream(data interface{}, prettyFn func(io.Writer)) error {
+	if err := ctx.ctx.Err(); err != nil {
+		return err
+	}
+	scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
+	if scanResult.Blocked {
+		return scanResult.BlockErr
+	}
+	if err := ctx.ctx.Err(); err != nil {
+		return err
+	}
+
+	if ctx.Format == "pretty" {
+		if scanResult.Alert != nil {
+			output.WriteAlertWarning(ctx.IO().ErrOut, scanResult.Alert)
+		}
+		if prettyFn != nil {
+			prettyFn(ctx.IO().Out)
+		}
+		return nil
+	}
+
+	env := output.Envelope{
+		OK:       true,
+		Identity: string(ctx.As()),
+		Data:     data,
+		Notice:   output.GetNotice(),
+	}
+	if scanResult.Alert != nil {
+		env.ContentSafetyAlert = scanResult.Alert
+	}
+	if err := json.NewEncoder(ctx.IO().Out).Encode(env); err != nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "failed to write streaming output").WithCause(err)
+	}
+	return nil
+}
+
 // OutPartialFailure writes an ok:false multi-status result envelope to stdout
 // and returns the partial-failure exit signal. Use it for batch operations
 // where some items failed but the per-item outcomes are the primary output:
@@ -877,15 +921,18 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
-	if shortcut.PrintFlagSchema != nil || shortcut.OnInvoke != nil {
+	if shortcut.PrintFlagSchema != nil || shortcut.OnInvoke != nil || shortcut.Preflight != nil {
 		onInvoke := shortcut.OnInvoke
+		preflight := shortcut.Preflight
 		relaxRequiredForSchema := shortcut.PrintFlagSchema != nil
-		// PreRunE runs before cobra's ValidateRequiredFlags. Two opt-in uses:
+		// PreRunE runs before cobra's ValidateRequiredFlags. Three opt-in uses:
 		//   - OnInvoke: fire a side effect (e.g. a deprecation notice) that must
 		//     surface even when the call later fails on a missing required flag.
 		//   - --print-schema: pure local introspection; relax the required-flag
 		//     gate so callers don't fill in unrelated flags just to ask for a
 		//     schema (clearing the annotation here is the supported opt-out).
+		//   - Preflight: validate raw flags before required-flag validation and
+		//     before runShortcut resolves identity, config, credentials, or clients.
 		cmd.PreRunE = func(c *cobra.Command, _ []string) error {
 			if onInvoke != nil {
 				onInvoke()
@@ -895,7 +942,11 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 					c.Flags().VisitAll(func(fl *pflag.Flag) {
 						delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
 					})
+					return nil
 				}
+			}
+			if preflight != nil {
+				return preflight(c.Context(), c)
 			}
 			return nil
 		}

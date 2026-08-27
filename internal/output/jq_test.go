@@ -5,8 +5,12 @@ package output
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 func TestJqFilter(t *testing.T) {
@@ -156,14 +160,16 @@ func TestValidateJqFlags(t *testing.T) {
 		outputFlag string
 		format     string
 		wantErr    string
+		wantParam  string
+		wantCause  bool
 	}{
 		{name: "empty jq is noop", jqExpr: "", outputFlag: "file.json", format: "csv", wantErr: ""},
 		{name: "jq only", jqExpr: ".data", outputFlag: "", format: "", wantErr: ""},
 		{name: "jq with json format", jqExpr: ".data", outputFlag: "", format: "json", wantErr: ""},
-		{name: "jq and output conflict", jqExpr: ".data", outputFlag: "out.json", format: "", wantErr: "--jq and --output are mutually exclusive"},
-		{name: "jq and csv conflict", jqExpr: ".data", outputFlag: "", format: "csv", wantErr: "--jq and --format csv are mutually exclusive"},
-		{name: "jq and ndjson conflict", jqExpr: ".data", outputFlag: "", format: "ndjson", wantErr: "--jq and --format ndjson are mutually exclusive"},
-		{name: "invalid expression", jqExpr: "invalid[", outputFlag: "", format: "", wantErr: "invalid jq expression"},
+		{name: "jq and output conflict", jqExpr: ".data", outputFlag: "out.json", format: "", wantErr: "--jq and --output are mutually exclusive", wantParam: "--jq"},
+		{name: "jq and csv conflict", jqExpr: ".data", outputFlag: "", format: "csv", wantErr: "--jq and --format csv are mutually exclusive", wantParam: "--jq"},
+		{name: "jq and ndjson conflict", jqExpr: ".data", outputFlag: "", format: "ndjson", wantErr: "--jq and --format ndjson are mutually exclusive", wantParam: "--jq"},
+		{name: "invalid expression", jqExpr: "invalid[", outputFlag: "", format: "", wantErr: "invalid jq expression", wantParam: "--jq", wantCause: true},
 	}
 
 	for _, tt := range tests {
@@ -182,7 +188,35 @@ func TestValidateJqFlags(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
+			var validation *errs.ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("error type = %T, want *errs.ValidationError", err)
+			}
+			if validation.Param != tt.wantParam {
+				t.Errorf("validation param = %q, want %q", validation.Param, tt.wantParam)
+			}
+			if tt.wantCause && errors.Unwrap(err) == nil {
+				t.Error("validation error cause = nil, want jq parser/compiler cause")
+			}
 		})
+	}
+}
+
+func TestWithJqParamPreservesWrappedValidationError(t *testing.T) {
+	cause := errors.New("jq parser sentinel")
+	validationErr := errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid jq expression").WithCause(cause)
+	wrapper := fmt.Errorf("validate jq: %w", validationErr)
+
+	got := withJqParam(wrapper)
+	var validation *errs.ValidationError
+	if !errors.As(got, &validation) {
+		t.Fatalf("error type = %T, want wrapped *errs.ValidationError", got)
+	}
+	if validation.Param != "--jq" {
+		t.Fatalf("validation param = %q, want --jq", validation.Param)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatal("wrapped jq validation cause was not preserved")
 	}
 }
 

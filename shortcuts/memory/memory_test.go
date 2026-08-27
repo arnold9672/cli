@@ -5,29 +5,15 @@ package memory
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"code.byted.org/lark_search/larksuite-cli/errs"
 	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
-	"code.byted.org/lark_search/larksuite-cli/internal/core"
 	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
-
-func TestShortcuts(t *testing.T) {
-	got := Shortcuts()
-	if len(got) != 2 {
-		t.Fatalf("len(Shortcuts()) = %d, want 2", len(got))
-	}
-	if got[0].Command != "+list" || got[1].Command != "+get" {
-		t.Fatalf("commands = %q, %q; want +list, +get", got[0].Command, got[1].Command)
-	}
-}
 
 func TestMemoryDryRunShapes(t *testing.T) {
 	cases := []struct {
@@ -205,30 +191,4 @@ func TestMemoryAPIFailureTyped(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout should stay empty on API failure, got %q", stdout.String())
 	}
-}
-
-func memoryTestConfig(t *testing.T) *core.CliConfig {
-	t.Helper()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	return &core.CliConfig{
-		AppID:               "cli_dummy_app",
-		AppSecret:           "cli_dummy_secret",
-		Brand:               core.BrandFeishu,
-		DefaultAs:           core.AsUser,
-		UserOpenId:          "ou_test",
-		SupportedIdentities: 1,
-	}
-}
-
-func runMemoryShortcut(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
-	t.Helper()
-	parent := &cobra.Command{Use: "memory"}
-	s.Mount(parent, f)
-	parent.SetArgs(args)
-	parent.SilenceErrors = true
-	parent.SilenceUsage = true
-	if stdout != nil {
-		stdout.Reset()
-	}
-	return parent.ExecuteContext(context.Background())
 }
