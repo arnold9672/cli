@@ -54,9 +54,12 @@ type Shortcut struct {
 	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
-	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
-	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
-	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+	// Preflight optionally validates raw flags before cobra required-flag
+	// validation and before runShortcut initializes runtime dependencies.
+	Preflight func(ctx context.Context, cmd *cobra.Command) error
+	DryRun    func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
+	Validate  func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
+	Execute   func(ctx context.Context, runtime *RuntimeContext) error      // main logic
 
 	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
 	// cobra validates required flags — so its side effect fires even when the

@@ -1,12 +1,13 @@
 # lark-memory-cli
 
-`lark-memory-cli` 是这个 fork 中面向 Memory Hub 的专用命令入口，目前只聚焦两个
+`lark-memory-cli` 是这个 fork 中面向 Memory Hub 的专用命令入口，目前只聚焦三个
 shortcuts：
 
 - `lark-memory-cli memory +list`
 - `lark-memory-cli memory +get`
+- `lark-memory-cli memory +graph-query`
 
-这两个命令使用用户身份调用，需要 `memory:hub` scope。Memory Hub 当前默认调用
+这三个命令使用用户身份调用，需要 `memory:hub` scope。Memory Hub 当前默认调用
 线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`；安装脚本会生成独立
 wrapper，不覆盖用户已有 `lark-cli` 命令。
 
@@ -220,6 +221,29 @@ lark-memory-cli memory +get --as user \
 ```
 
 `--payload-mode` 支持 `metadata`、`summary`、`full`，默认值是 `full`。
+
+## 查询 Memory Graph 历史数据
+
+`+graph-query` 仅支持查询当前登录用户的历史 Memory Graph 节点或边，请求体中的
+`user_id` 会自动使用登录态的 `open_id`。
+
+```bash
+lark-memory-cli memory +graph-query --as user \
+  --start-time-sec 1784476800 \
+  --end-time-sec 1785081600 \
+  --detail-format markdown \
+  --format ndjson
+```
+
+时间范围是 Unix 秒的半开区间 `[start_time_sec, end_time_sec)`，必须满足
+`0 < end-start <= 604800`，即最多七天（恰好七天有效）。
+
+参数支持：
+
+- `--start-time-sec`：必填，包含边界的 Unix 秒起始时间。
+- `--end-time-sec`：必填，不包含边界的 Unix 秒结束时间。
+- `--detail-format`：Graph 详情格式，支持 `markdown`（默认）和 `json`。
+- `--format`：输出格式，支持 `json`、`ndjson` 和 `pretty`；不支持 `table`、`csv` 和 `--jq`。
 
 ## 排障
 

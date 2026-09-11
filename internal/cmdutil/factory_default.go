@@ -19,6 +19,7 @@ import (
 	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
 	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
 	"code.byted.org/lark_search/larksuite-cli/internal/core"
 	"code.byted.org/lark_search/larksuite-cli/internal/credential"
 	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
@@ -143,13 +144,17 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
 		}
-		opts = append(opts, lark.WithHttpClient(&http.Client{
-			Transport:     buildSDKTransport(),
-			CheckRedirect: safeRedirectPolicy,
-		}))
+		opts = append(opts, lark.WithHttpClient(newSDKHTTPClient(buildSDKTransport())))
 		opts = append(opts, lark.WithOpenBaseUrl(resolveSDKOpenBaseURL(acct.Brand, os.Getenv)))
 		return lark.NewClient(acct.AppID, credential.RuntimeAppSecret(acct.AppSecret), opts...), nil
 	})
+}
+
+func newSDKHTTPClient(base http.RoundTripper) *http.Client {
+	return &http.Client{
+		Transport:     client.NewSingleAttemptTransport(base),
+		CheckRedirect: safeRedirectPolicy,
+	}
 }
 
 const envOpenBaseURL = "LARKSUITE_CLI_OPEN_BASE_URL"

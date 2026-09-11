@@ -4,8 +4,9 @@
 
 - `lark-memory-cli memory +list`
 - `lark-memory-cli memory +get`
+- `lark-memory-cli memory +graph-query`
 
-这两个 shortcut 使用用户身份调用，需要 `memory:hub` scope。当前 Memory
+这三个 shortcut 使用用户身份调用，需要 `memory:hub` scope。当前 Memory
 Hub 默认调用线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`。
 
 安装脚本不会覆盖用户已有的 `lark-cli`。它会安装一个独立命令
@@ -251,6 +252,41 @@ lark-memory-cli memory +get --as user \
 ```
 
 `--payload-mode` 支持 `metadata`、`summary`、`full`，默认值是 `full`。
+
+## 查询 Memory Graph 历史数据
+
+仅在需要查询**当前登录用户**的历史 Memory Graph 节点或边时使用 `+graph-query`。该命令
+只支持本人查询：请求体中的 `user_id` 会自动使用登录态的 `open_id`，不接受 UID、不会做
+UID/open_id 转换，也不依赖通讯录，不能查询其他用户。
+
+登录态没有有效 `open_id` 时，请先执行：
+
+```bash
+lark-memory-cli auth login --scope "memory:hub"
+```
+
+```bash
+lark-memory-cli memory +graph-query --as user \
+  --start-time-sec 1784476800 \
+  --end-time-sec 1785081600 \
+  --detail-format markdown \
+  --format ndjson
+```
+
+时间范围是 Unix 秒的半开区间 `[start_time_sec, end_time_sec)`，必须满足
+`0 < end-start <= 604800`，即最多七天（恰好七天有效）。CLI 从传入的精确起点开始，
+拆成连续且每段最多 `86400` 秒的窗口，不会按自然日或本地时区对齐。最多七个窗口并发请求；
+每个窗口遇到 API code `2200`、typed network error 或其他 retryable error 时，按固定
+`200ms` 间隔最多调用三次。context cancel/deadline、auth、permission、validation 和
+content safety 错误不重试。输出始终按时间顺序逐窗口写到 stdout，不会因后续窗口先完成而乱序。
+
+Graph 流式输出支持 `json`、`ndjson` 和 `pretty`；`table`、`csv` 与 `--jq` 会被拒绝。
+脚本和 Agent 推荐使用 `--format ndjson`，逐行消费完整 JSON。最早失败窗口重试耗尽后，
+只保留它之前连续成功窗口的有效输出；后续窗口即使已经请求成功也不会渲染。整个命令仍然失败，
+消费者必须检查进程退出状态，不能仅凭已有 stdout 判定全范围成功。
+
+追加 `--dry-run` 会生成全部窗口请求计划，唯一硬保证是不会执行 Graph API 请求；命令仍会加载
+身份和配置，并尝试 token/scope 预检，dry-run 成功不代表真实 Graph 请求一定可用。
 
 ## 排障
 
