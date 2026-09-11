@@ -94,6 +94,38 @@ func TestMemoryDryRun(t *testing.T) {
 		})
 	})
 
+	t.Run("graph one-hop plans one request", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"memory", "+one-hop",
+				"--root", "1:im_root_123",
+				"--lookback-days", "1",
+				"--relation-type", "im_reply",
+				"--detail-format", "json",
+				"--hop", "1",
+				"--dry-run",
+			},
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+
+		require.Equal(t, int64(1), gjson.Get(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, "/open-apis/search/v2/memory_hub/one_hop", gjson.Get(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, "ou_graph_test_user", gjson.Get(result.Stdout, "api.0.body.user_id").String(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, int64(1), gjson.Get(result.Stdout, "api.0.body.roots.#").Int(), "stdout:\n%s", result.Stdout)
+		require.False(t, gjson.Get(result.Stdout, "api.0.body.filters.node_types").Exists(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, "im_reply", gjson.Get(result.Stdout, "api.0.body.filters.relation_types.0").String(), "stdout:\n%s", result.Stdout)
+		require.Equal(t, "json", gjson.Get(result.Stdout, "api.0.body.params.detailFormat").String(), "stdout:\n%s", result.Stdout)
+		require.Len(t, gjson.Get(result.Stdout, "api.0.body.params").Map(), 1, "stdout:\n%s", result.Stdout)
+		start := gjson.Get(result.Stdout, "api.0.body.time_range.start_time_sec").Int()
+		end := gjson.Get(result.Stdout, "api.0.body.time_range.end_time_sec").Int()
+		require.Equal(t, int64(24*60*60), end-start, "stdout:\n%s", result.Stdout)
+	})
+
 	for _, tc := range []struct {
 		name             string
 		detailFormatFlag string

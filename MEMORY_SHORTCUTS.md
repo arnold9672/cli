@@ -5,8 +5,9 @@
 - `lark-memory-cli memory +list`
 - `lark-memory-cli memory +get`
 - `lark-memory-cli memory +graph-query`
+- `lark-memory-cli memory +one-hop`
 
-这三个 shortcut 使用用户身份调用，需要 `memory:hub` scope。当前 Memory
+这四个 shortcut 使用用户身份调用，需要 `memory:hub` scope。当前 Memory
 Hub 默认调用线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`。
 
 安装脚本不会覆盖用户已有的 `lark-cli`。它会安装一个独立命令
@@ -287,6 +288,38 @@ Graph 流式输出支持 `json`、`ndjson` 和 `pretty`；`table`、`csv` 与 `-
 
 追加 `--dry-run` 会生成全部窗口请求计划，唯一硬保证是不会执行 Graph API 请求；命令仍会加载
 身份和配置，并尝试 token/scope 预检，dry-run 成功不代表真实 Graph 请求一定可用。
+
+## 查询 Memory Graph 一跳关系
+
+OneHop 需要调用方已经知道一个或多个稳定查询起点的 NodeType 和 RootID：
+
+```bash
+lark-memory-cli memory +one-hop --as user \
+  --root '2:doc_123' \
+  --root '3:meeting_123' \
+  --lookback-days 7 \
+  --node-type 2,3 \
+  --relation-type meeting_discusses_doc \
+  --detail-format markdown \
+  --hop 1 \
+  --trace-id trace-xxx \
+  --format json
+```
+
+- NodeType 编号：IM_DAY=1、DOC_DAY=2、MEETING=3、USER=4、CALENDAR=5；当前目标过滤只支持 1、2、3。
+- `--root` 和 `--hop` 必填；Root 格式是 `<node_type>:<root_id>`，可重复传入。
+- USER（4）不能作为 Root 或 `--node-type`；CALENDAR（5）尚未支持作为 Root 或 `--node-type`；未传时不发送 `filters.node_types`。
+- `--lookback-days` 默认 7，以执行时刻为右开边界；OneHop 不受 GraphQuery 单次 24 小时限制。
+- CLI 每次只发送一个 OneHop 请求，不切窗、不自动循环；`--hop` 范围 1～5，仅记录当前探索层数。
+- `--trace-id` 未传时自动生成，供 Agent 的多次手工探索串联；`--scene` 固定为 `graphcli`。
+  这三个字段仅用于 CLI 输出元数据，不发送给 GraphHub；下行 `params` 只发送 `detailFormat`。
+- `--relation-type` 可重复；未传时不做关系类型过滤。
+- 输出支持 `json` 和 `pretty`；嵌套的节点、边和 meta 不支持 `table`、`csv` 或 `ndjson`。
+
+CLI 会拒绝显式传入的 USER Root/过滤条件，并在响应中排除 USER。响应节点增加 `expandable`；节点和边增加
+`expanded_from`，记录请求 Root、实际扩展的上游 NodeID 和关系边。多 Root 命中同一节点时保留
+多个来源，不压成一个。输出 `meta` 同时记录结果数量、USER 过滤数量、Detail 字节数、耗时、
+hop、trace ID 和 `log_id`。试用期不做静默截断；下游错误、413、超时或结构异常均整体失败。
 
 ## 排障
 

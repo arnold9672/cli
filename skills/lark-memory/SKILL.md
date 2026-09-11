@@ -1,6 +1,6 @@
 ---
 name: lark-memory
-version: 0.1.3
+version: 0.1.4
 description: "Use when users need Memory Hub long-term context, preferences, history, project background, or explicit Memory Graph queries."
 metadata:
   requires:
@@ -31,6 +31,8 @@ metadata:
 - 查询可见 memory 或读取 memory 快照、偏好、长期上下文：使用 `+list` / `+get`。
 - 仅当用户明确要求查询历史 Memory Graph 节点或边时使用 `+graph-query`；不得用
   `+list` / `+get` 替代 Graph 查询。
+- 已知可靠的 NodeType + RootID，需要沿 Graph 查看直接关联内容时使用 `memory +one-hop`；
+  不得用 SourceID 猜 RootID，不得由 CLI 自动循环多跳。
 
 ## List/Get 流程
 
@@ -68,6 +70,7 @@ lark-memory-cli memory +get --memory-key <memory_key> --payload-mode metadata --
 | 获取 memory 详情 | `lark-memory-cli memory +get --memory-key <key> --as user --format json` |
 | 获取指定 variant | `lark-memory-cli memory +get --memory-key <key> --variant-key <variant> --as user --format json` |
 | 查询历史 Graph | `lark-memory-cli memory +graph-query --start-time-sec <start> --end-time-sec <end> --as user --format ndjson` |
+| 查询一跳关系 | `lark-memory-cli memory +one-hop --root '<node_type>:<root_id>' --hop <1-5> --as user --format json` |
 | 调试请求结构 | 在上述命令后追加 `--dry-run` |
 
 ## 权限与身份
@@ -102,6 +105,22 @@ lark-memory-cli memory +get --memory-key <memory_key> --payload-mode metadata --
 - Agent 优先使用 `--format ndjson`，只消费完整行，并始终检查进程退出状态。最早失败窗口会使命令整体
   以非零状态退出；已输出行只是它之前连续成功的有效但不完整前缀，更晚的窗口即使已请求成功也绝不渲染。
   必须明确标注“部分/不完整”，不得声称全范围成功。
+
+## OneHop 契约
+
+- NodeType 编号：IM_DAY=1、DOC_DAY=2、MEETING=3、USER=4、CALENDAR=5；当前目标过滤只支持 1、2、3。
+- 只有已经确认 NodeType + RootID 时才能调用；`--root` 格式为 `<node_type>:<root_id>`，可重复。
+- `--lookback-days` 默认 7，表示截至执行时刻的完整滚动窗口；一次命令只发送一次 OneHop 请求，
+  不切成 24 小时窗口，不自动继续下一跳。
+- `--hop` 必填且只能为 1～5，用于标识 Agent 当前探索层数；API 本身每次仍只查询一跳。
+- 输出只使用 `json` 或 `pretty`；需要机器处理时使用 `json`。
+- USER（4）不能作为 Root 或目标类型，CALENDAR（5）尚未支持作为 Root 或目标过滤。未显式传
+  `--node-type` 时不发送 `filters.node_types`；返回后再删除 USER 节点和与其相连的边。
+- `expanded_from` 表明结果来自哪个请求 Root、实际上游 NodeID 和关系边；多来源必须全部保留。
+  `expandable=false` 表示节点没有可靠 RootID，禁止用 SourceID 代替。
+- 检查 `meta.filtered_user_node_count`、`meta.filtered_user_edge_count`、`meta.node_count`、
+  `meta.edge_count`、`meta.detail_bytes`、`meta.took_ms`、`meta.trace_id` 和 `meta.log_id`。
+- CLI 不截断结果。下游失败、超时、413 或响应结构异常时，不得把已有内容当完整成功结果。
 
 ## 安全规则
 

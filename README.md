@@ -1,13 +1,14 @@
 # lark-memory-cli
 
-`lark-memory-cli` 是这个 fork 中面向 Memory Hub 的专用命令入口，目前只聚焦三个
+`lark-memory-cli` 是这个 fork 中面向 Memory Hub 的专用命令入口，目前只聚焦四个
 shortcuts：
 
 - `lark-memory-cli memory +list`
 - `lark-memory-cli memory +get`
 - `lark-memory-cli memory +graph-query`
+- `lark-memory-cli memory +one-hop`
 
-这三个命令使用用户身份调用，需要 `memory:hub` scope。Memory Hub 当前默认调用
+这四个命令使用用户身份调用，需要 `memory:hub` scope。Memory Hub 当前默认调用
 线上 OpenAPI 域名，并继续发送 `x-tt-env: ppe_memory_hub`；安装脚本会生成独立
 wrapper，不覆盖用户已有 `lark-cli` 命令。
 
@@ -244,6 +245,39 @@ lark-memory-cli memory +graph-query --as user \
 - `--end-time-sec`：必填，不包含边界的 Unix 秒结束时间。
 - `--detail-format`：Graph 详情格式，支持 `markdown`（默认）和 `json`。
 - `--format`：输出格式，支持 `json`、`ndjson` 和 `pretty`；不支持 `table`、`csv` 和 `--jq`。
+
+## 查询 Memory Graph 一跳关系
+
+已知稳定业务实体的 NodeType 和 RootID 后，使用 `memory +one-hop` 查询该实体在滚动时间窗内
+的时间线节点，以及这些节点通过入边或出边直接关联的一跳节点：
+
+```bash
+lark-memory-cli memory +one-hop --as user \
+  --root '2:doc_123' \
+  --root '3:meeting_123' \
+  --lookback-days 7 \
+  --node-type 2,3 \
+  --relation-type meeting_discusses_doc \
+  --detail-format markdown \
+  --hop 1 \
+  --trace-id trace-xxx \
+  --format json
+```
+
+`--root` 和 `--hop` 必填。`--root` 可重复，格式为 `<node_type>:<root_id>`；节点类型编号为
+IM_DAY=1、DOC_DAY=2、MEETING=3、USER=4、CALENDAR=5。当前目标过滤只支持 1、2、3；未传
+`--node-type` 时不发送 `filters.node_types`。USER
+不能作为 Root 或目标过滤类型，CALENDAR（5）尚未支持作为 Root 或目标过滤，CLI 还会从响应中删除
+USER 节点及其关联边。
+
+`--lookback-days` 默认 7，CLI 以执行时刻为右开边界构造完整滚动时间窗；一次命令只发送一次
+OneHop 请求，不做 24 小时切片，也不自动继续下一跳。`--hop` 只记录 Agent 当前探索层数，范围
+1～5；未传 `--trace-id` 时自动生成。`--hop`、`--trace-id` 和 `--scene` 仅作为 CLI 输出元数据，
+不发送给 GraphHub。下行 `params` 只发送协议字段 `detailFormat`。输出支持 `json` 和 `pretty`。
+
+JSON 输出的 `data.nodes` 和 `data.edges` 保留下游详情，并补充 `expanded_from` 来源信息；节点还会
+包含 `expandable`。`meta` 包含 Root、节点、边、USER 过滤、Detail 字节数、耗时、hop、trace ID
+和可用的 OpenAPI `log_id`。CLI 不截断 OneHop 结果；下游失败或响应结构不完整时返回结构化错误。
 
 ## 排障
 
