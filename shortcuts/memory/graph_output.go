@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -21,8 +22,11 @@ func renderGraphWindowPretty(w io.Writer, out graphWindowResult) error {
 	if _, err := fmt.Fprintf(w, "Window %d [%d, %d)\n", out.WindowIndex, out.StartTimeSec, out.EndTimeSec); err != nil {
 		return err
 	}
+	return renderGraphDataPretty(w, out.Data)
+}
 
-	nodes := graphItems(out.Data, "nodes")
+func renderGraphDataPretty(w io.Writer, data map[string]interface{}) error {
+	nodes := graphItems(data, "nodes")
 	if _, err := fmt.Fprintf(w, "Nodes (%d)\n", len(nodes)); err != nil {
 		return err
 	}
@@ -41,6 +45,7 @@ func renderGraphWindowPretty(w io.Writer, out graphWindowResult) error {
 			{prefix: "  ", key: "root_id"},
 			{prefix: "  ", key: "graph_date"},
 			{prefix: "  ", key: "event_time_sec"},
+			{prefix: "  ", key: "expandable"},
 		} {
 			if err := writeGraphField(w, field.prefix, field.key, node[field.key]); err != nil {
 				return err
@@ -49,9 +54,12 @@ func renderGraphWindowPretty(w io.Writer, out graphWindowResult) error {
 		if err := writeGraphDetail(w, node["detail"]); err != nil {
 			return err
 		}
+		if err := writeGraphJSONField(w, "expanded_from", node["expanded_from"]); err != nil {
+			return err
+		}
 	}
 
-	edges := graphItems(out.Data, "edges")
+	edges := graphItems(data, "edges")
 	if _, err := fmt.Fprintf(w, "Edges (%d)\n", len(edges)); err != nil {
 		return err
 	}
@@ -75,6 +83,9 @@ func renderGraphWindowPretty(w io.Writer, out graphWindowResult) error {
 			}
 		}
 		if err := writeGraphDetail(w, edge["detail"]); err != nil {
+			return err
+		}
+		if err := writeGraphJSONField(w, "expanded_from", edge["expanded_from"]); err != nil {
 			return err
 		}
 	}
@@ -101,9 +112,23 @@ func graphScalar(value interface{}) (string, bool) {
 		return value, true
 	case json.Number:
 		return value.String(), true
+	case bool:
+		return strconv.FormatBool(value), true
 	default:
 		return "", false
 	}
+}
+
+func writeGraphJSONField(w io.Writer, key string, value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "  %s: %s\n", key, encoded)
+	return err
 }
 
 func writeGraphDetail(w io.Writer, value interface{}) error {

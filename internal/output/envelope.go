@@ -15,8 +15,18 @@ type Envelope struct {
 
 // Meta carries optional metadata in envelope responses.
 type Meta struct {
-	Count    int    `json:"count,omitempty"`
-	Rollback string `json:"rollback,omitempty"`
+	Count                 int    `json:"count,omitempty"`
+	Rollback              string `json:"rollback,omitempty"`
+	RootCount             *int   `json:"root_count,omitempty"`
+	NodeCount             *int   `json:"node_count,omitempty"`
+	EdgeCount             *int   `json:"edge_count,omitempty"`
+	FilteredUserNodeCount *int   `json:"filtered_user_node_count,omitempty"`
+	FilteredUserEdgeCount *int   `json:"filtered_user_edge_count,omitempty"`
+	DetailBytes           *int   `json:"detail_bytes,omitempty"`
+	TookMS                *int64 `json:"took_ms,omitempty"`
+	LogID                 string `json:"log_id,omitempty"`
+	TraceID               string `json:"trace_id,omitempty"`
+	Hop                   *int   `json:"hop,omitempty"`
 }
 
 // PendingNotice, if set, returns system-level notices to inject as the

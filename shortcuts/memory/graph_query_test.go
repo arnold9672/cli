@@ -31,11 +31,11 @@ import (
 
 func TestMemoryGraphQueryRegistered(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 3 {
-		t.Fatalf("len(Shortcuts()) = %d, want 3", len(got))
+	if len(got) != 4 {
+		t.Fatalf("len(Shortcuts()) = %d, want 4", len(got))
 	}
-	if got[0].Command != "+list" || got[1].Command != "+get" || got[2].Command != "+graph-query" {
-		t.Fatalf("commands = %q, %q, %q; want +list, +get, +graph-query", got[0].Command, got[1].Command, got[2].Command)
+	if got[0].Command != "+list" || got[1].Command != "+get" || got[2].Command != "+graph-query" || got[3].Command != "+one-hop" {
+		t.Fatalf("commands = %q, %q, %q, %q; want +list, +get, +graph-query, +one-hop", got[0].Command, got[1].Command, got[2].Command, got[3].Command)
 	}
 }
 

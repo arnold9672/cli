@@ -64,18 +64,26 @@ func parseGraphQuerySpec(detailFormat, startTimeSec, endTimeSec string) (graphQu
 }
 
 func bindCurrentGraphUser(spec graphQuerySpec, rctx *common.RuntimeContext) (graphQuerySpec, error) {
+	userID, err := currentGraphUserID(rctx)
+	if err != nil {
+		return graphQuerySpec{}, err
+	}
+	spec.UserID = userID
+	return spec, nil
+}
+
+func currentGraphUserID(rctx *common.RuntimeContext) (string, error) {
 	userID := ""
 	if rctx != nil && rctx.Config != nil {
 		userID = strings.TrimSpace(rctx.UserOpenId())
 	}
 	if !strings.HasPrefix(userID, "ou_") {
-		return graphQuerySpec{}, errs.NewAuthenticationError(
+		return "", errs.NewAuthenticationError(
 			errs.SubtypeTokenMissing,
 			"current user open_id is unavailable",
 		).WithHint("run `lark-memory-cli auth login --scope \"memory:hub\"` and retry")
 	}
-	spec.UserID = userID
-	return spec, nil
+	return userID, nil
 }
 
 func parseGraphQueryTime(value, flag string) (int64, error) {

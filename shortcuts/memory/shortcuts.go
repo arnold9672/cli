@@ -22,5 +22,6 @@ func Shortcuts() []common.Shortcut {
 		MemoryList,
 		MemoryGet,
 		MemoryGraphQuery,
+		MemoryOneHop,
 	}
 }
