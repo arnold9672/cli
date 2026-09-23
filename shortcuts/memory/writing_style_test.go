@@ -121,11 +121,26 @@ func TestMemoryWritingStyleExecuteParsesPayload(t *testing.T) {
 			t.Fatalf("%s = %q, want %q; output=%s", path, value, want, got)
 		}
 	}
-	if count := gjson.Get(got, "data.ai_guidance.steps.#").Int(); count < 5 {
-		t.Fatalf("ai guidance step count = %d, want at least 5; output=%s", count, got)
+	if count := gjson.Get(got, "data.ai_guidance.steps.#").Int(); count < 4 {
+		t.Fatalf("general AI guidance step count = %d, want at least 4; output=%s", count, got)
 	}
 	if count := gjson.Get(got, "data.ai_guidance.guardrails.#").Int(); count < 4 {
 		t.Fatalf("ai guidance guardrail count = %d, want at least 4; output=%s", count, got)
+	}
+	queryPrompt := gjson.Get(got, "data.ai_guidance.prompt_template").String()
+	for _, required := range []string{"{query}", "事实", "创建或修改文档", "完整代表性区块"} {
+		if !strings.Contains(queryPrompt, required) {
+			t.Fatalf("general query prompt missing %q: %s", required, queryPrompt)
+		}
+	}
+	if count := gjson.Get(got, "data.ai_guidance.document_steps.#").Int(); count < 5 {
+		t.Fatalf("document step count = %d, want at least 5; output=%s", count, got)
+	}
+	if step := gjson.Get(got, "data.ai_guidance.document_steps.1").String(); !strings.Contains(step, "必须") || !strings.Contains(step, "完整代表性区块") {
+		t.Fatalf("document reference step is not strict enough: %s", step)
+	}
+	if count := gjson.Get(got, "data.ai_guidance.document_guardrails.#").Int(); count < 4 {
+		t.Fatalf("document guardrail count = %d, want at least 4; output=%s", count, got)
 	}
 	if count := gjson.Get(got, "data.ai_guidance.template_requirements.#").Int(); count != 8 {
 		t.Fatalf("template requirement count = %d, want 8; output=%s", count, got)
@@ -139,8 +154,8 @@ func TestMemoryWritingStyleExecuteParsesPayload(t *testing.T) {
 		"严格复刻参考文档的格式骨架",
 		"创建后回读并逐项对照验证",
 	} {
-		if prompt := gjson.Get(got, "data.ai_guidance.prompt_template").String(); !strings.Contains(prompt, required) {
-			t.Fatalf("prompt template missing %q: %s", required, prompt)
+		if prompt := gjson.Get(got, "data.ai_guidance.document_rewrite_prompt_template").String(); !strings.Contains(prompt, required) {
+			t.Fatalf("document rewrite prompt template missing %q: %s", required, prompt)
 		}
 	}
 }

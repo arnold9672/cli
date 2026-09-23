@@ -1,7 +1,7 @@
 interface:
   display_name: "memory-writing-style"
-  short_description: "Apply the current user's Memory-derived writing style"
-  default_prompt: "Use $memory-writing-style to write or rewrite this content in my established style."
+  short_description: "Apply my writing style to the request that follows"
+  default_prompt: "Use $memory-writing-style to complete my request in my writing style."
 
 policy:
   allow_implicit_invocation: true

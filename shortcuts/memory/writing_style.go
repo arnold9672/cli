@@ -173,11 +173,14 @@ type writingStyleReference struct {
 }
 
 type writingStyleAIGuidance struct {
-	PromptTemplate        string   `json:"prompt_template"`
-	Steps                 []string `json:"steps"`
-	TemplateRequirements  []string `json:"template_requirements"`
-	VerificationChecklist []string `json:"verification_checklist"`
-	Guardrails            []string `json:"guardrails"`
+	PromptTemplate                string   `json:"prompt_template"`
+	DocumentRewritePromptTemplate string   `json:"document_rewrite_prompt_template"`
+	Steps                         []string `json:"steps"`
+	DocumentSteps                 []string `json:"document_steps"`
+	TemplateRequirements          []string `json:"template_requirements"`
+	VerificationChecklist         []string `json:"verification_checklist"`
+	Guardrails                    []string `json:"guardrails"`
+	DocumentGuardrails            []string `json:"document_guardrails"`
 }
 
 func buildWritingStyleMemoryBody() map[string]interface{} {
@@ -419,7 +422,10 @@ func writingStyleDocumentToken(sourceID string) string {
 
 func defaultWritingStyleAIGuidance() writingStyleAIGuidance {
 	return writingStyleAIGuidance{
-		PromptTemplate: `参考我的写作风格 memory，将 {文档链接} 改写成我的风格，并重新创建一个飞书云文档。
+		PromptTemplate: `参考我的写作风格 Memory，完成以下请求：{query}
+
+先按请求查找必要的事实和素材，再判断输出类型与写作场景。将 Memory 用于信息组织、格式、措辞和语气；不要把 Memory 当作该请求的事实来源。若采用 Memory 中相关参考文档的格式，必须实际读取其完整代表性区块并确认真实 block 结构，不能只依据 Memory 摘要推断。若请求要求创建或修改文档，应将写作风格实际应用到文档，并按请求执行创建或原位修改，完成后回读。若没有要求文档操作，按指定形式直接回答。`,
+		DocumentRewritePromptTemplate: `参考我的写作风格 memory，将 {文档链接} 改写成我的风格，并重新创建一个飞书云文档。
 
 先判断原文的文档类型和使用场景，再从 memory 中选择最相关的同类型参考文档作为唯一格式模板。若 memory 提供了参考文档，必须实际读取其完整代表性区块，确认真实 block 结构，不得仅依据 memory 摘要推断格式。
 
@@ -427,13 +433,17 @@ func defaultWritingStyleAIGuidance() writingStyleAIGuidance {
 
 {写作风格 memory}`,
 		Steps: []string{
-			"读取待改写文档，先判断原文的文档类型和使用场景。",
-			"将“跨场景稳定特征”作为全局写作约束。",
-			"在“场景化写作模式”中只选择与当前任务最匹配的一个场景；没有匹配项时不要强套场景模板。",
-			"从所选场景规则的 source.doc 中选择最相关的同类型参考文档，并将其作为唯一格式模板。",
-			"必须实际读取格式模板的完整代表性区块，确认真实 block 结构；不得只依赖 Memory 摘要推断格式。",
-			"严格复刻模板格式骨架，只按 Memory 调整措辞和表达风格，然后重新创建一份飞书云文档。",
-			"创建后回读新文档，逐项对照模板检查结构，修正全部偏差和旧结构残留后再交付。",
+			"将用户在 Skill 名称后输入的内容作为原始请求，先确定所需事实来源、输出形式和写作场景。",
+			"从适合该请求的实时或历史资料获取事实；Memory 只提供写作风格，不用于证明工作进展等事实。",
+			"将“跨场景稳定特征”用于内容组织与表达，并选择匹配的场景化模式；无匹配项时不要强套模板。",
+			"按请求指定的形式交付；若请求创建或修改文档，执行 document_steps 并将风格用于实际文档；否则直接回答。",
+		},
+		DocumentSteps: []string{
+			"先判断用户要求新建文档还是修改现有文档；修改时读取目标文档与现有结构，新建时取得内容事实和素材。",
+			"按文档类型选择匹配的场景化风格；若 Memory 提供相关的同类型参考文档，必须选最相关的一份并实际读取其完整代表性区块，确认真实 block 结构。采用格式时只能用这一份作为模板；用户明确指定的模板优先。",
+			"将风格用于文档的信息组织、格式、措辞和语气；用户指定的格式和现有文档需保留的结构优先。无依据内容留空。",
+			"按用户要求创建新文档或修改原文，不擅自把原位修改改成另建文档。",
+			"操作后回读文档，检查事实、风格、结构和旧结构残留；修正偏差后再交付。",
 		},
 		TemplateRequirements: []string{
 			"标题层级",
@@ -446,19 +456,23 @@ func defaultWritingStyleAIGuidance() writingStyleAIGuidance {
 			"内容归位方式",
 		},
 		VerificationChecklist: []string{
-			"格式模板是否只有一个，且与原文属于同类型、同场景。",
-			"是否实际读取了模板的完整代表性区块并确认真实 block 结构。",
-			"标题、板块、表格列、列表层级、标签、checkbox、状态标记和内容位置是否逐项一致。",
-			"是否只调整措辞和表达风格，没有让 Memory 改变模板结构。",
-			"是否清除了原文旧结构残留和所有结构偏差。",
+			"执行的是用户要求的新建或原位修改操作。",
+			"使用参考格式时模板只有一个，且属于同类型、同场景；已读取完整代表性区块并确认真实 block 结构。",
+			"标题、板块、表格列、列表层级、标签、checkbox、状态标记和内容位置符合用户要求及选定模板。",
+			"写作风格已实际应用到文档的信息组织和表达，未覆盖用户指定或原文需保留的结构。",
+			"已修正结构偏差；改写时已清除旧结构残留。",
 			"无依据内容是否保持为空，且没有推测或补写业务事实。",
 		},
 		Guardrails: []string{
 			"Memory 只代表历史写作偏好，不能替代用户本次提供的事实、最新文档或明确指令。",
 			"不要把其他场景或单篇文档的局部格式当成跨场景稳定偏好。",
-			"只能选择一份最相关的同类型参考文档作为格式模板，不得混合多份模板结构。",
-			"不得依据写作风格补写不存在的业务事实；缺少依据时留空或向用户确认。",
+			"不得依据写作风格补写不存在的业务事实；缺少依据时说明缺口或向用户确认。",
+			"不要因为使用了写作风格 Skill 就擅自新建文档或改变用户要求的输出形式。",
+		},
+		DocumentGuardrails: []string{
+			"使用参考格式时只能选择一份最相关的同类型文档，不得混合多份模板结构。",
 			"不得仅根据 Memory 摘要推断参考文档格式，必须以实际读取到的 block 结构为准。",
+			"修改现有文档时保留用户未要求更改的内容和结构。",
 			"引用参考文档时保留来源可追溯性，不要把来源正文整段复制为当前内容。",
 		},
 	}
@@ -482,13 +496,17 @@ func printWritingStylePretty(w io.Writer, result writingStyleResult) {
 		}
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintln(w, "## AI 使用方法")
+	fmt.Fprintln(w, "## 任意请求的 AI 使用方法")
 	for index, step := range result.AIGuidance.Steps {
 		fmt.Fprintf(w, "%d. %s\n", index+1, step)
 	}
-	fmt.Fprintln(w, "\n约束：")
+	fmt.Fprintln(w, "\n通用约束：")
 	for _, guardrail := range result.AIGuidance.Guardrails {
 		fmt.Fprintf(w, "- %s\n", guardrail)
+	}
+	fmt.Fprintln(w, "\n## 创建或修改文档时")
+	for index, step := range result.AIGuidance.DocumentSteps {
+		fmt.Fprintf(w, "%d. %s\n", index+1, step)
 	}
 	fmt.Fprintln(w, "\n格式骨架检查项：")
 	for _, requirement := range result.AIGuidance.TemplateRequirements {
@@ -497,6 +515,10 @@ func printWritingStylePretty(w io.Writer, result writingStyleResult) {
 	fmt.Fprintln(w, "\n交付前验证：")
 	for _, item := range result.AIGuidance.VerificationChecklist {
 		fmt.Fprintf(w, "- %s\n", item)
+	}
+	fmt.Fprintln(w, "\n文档操作约束：")
+	for _, guardrail := range result.AIGuidance.DocumentGuardrails {
+		fmt.Fprintf(w, "- %s\n", guardrail)
 	}
 }
 

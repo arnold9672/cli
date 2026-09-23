@@ -38,7 +38,7 @@ metadata:
   不得用 SourceID 猜 RootID，不得由 CLI 自动循环多跳。
 - 用户选择 `memory-graph-search` 或输入 `memory graph search <query>` 时，改用独立的
   `memory-graph-search` skill。
-- 用户要求按自己的风格写作、改写或获取个人写作风格时，改用 `memory-writing-style` skill。
+- 用户选择 `memory-writing-style` 或要求按自己的风格总结、写作、改写时，改用该 Skill；其名称后的文本即用户请求。
 
 ## List/Get 流程
 

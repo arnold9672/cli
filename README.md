@@ -231,6 +231,16 @@ lark-memory-cli memory +get --as user \
 
 ## 获取并应用个人写作风格
 
+在 Codex 输入框中，Skill 名称后可直接跟任意写作请求。例如：
+
+```text
+$memory-writing-style 帮忙总结下过去两个月的工作
+```
+
+Skill 会按请求寻找该时间范围内的工作事实，再用 Memory 调整总结的组织与措辞；不会因为使用
+Skill 就自动创建飞书文档。若 query 要求创建或修改文档，Skill 会把风格实际用于该文档，并按
+用户要求新建或原位修改。
+
 `memory +writing-style` 固定读取 `personal_memory_snapshot` 的
 `agentic_v1_writing_pattn_v1` variant，将 `写作风格.md` 的 `h1/h2/h3/text` item 流解析为章节、
 子章节与规则，同时返回来源索引和 AI 使用指引：
@@ -247,10 +257,11 @@ LARKSUITE_CLI_MEMORY_TT_ENV='<ppe_env>' \
   lark-memory-cli memory +writing-style --as user --format json
 ```
 
-Agent 应先应用“跨场景稳定特征”，再从“场景化写作模式”中选择唯一匹配场景；改写文档时，
-只选择一份最相关的同类型参考文档作为格式模板，实际读取完整代表性区块并确认 block 结构，
-严格复刻标题、板块、表格列、列表、标签、checkbox、状态标记和内容位置。新文档创建后必须回读，
-清除结构偏差和旧结构残留。Memory 只用于调整表达风格，不能替代当前事实或用户最新指令。
+Agent 应先完成用户请求所需的事实检索，再应用“跨场景稳定特征”并选择匹配场景；创建或修改
+文档时，要把风格用于文档的信息组织、格式和措辞。需要同类型参考文档作为格式模板时，只选择
+最相关的一份；若 Memory 提供相关的同类型文档，必须实际读取完整代表性区块并确认 block 结构，
+不能只依据 Memory 摘要推断格式。操作后回读文档，修正事实、风格与
+结构偏差。Memory 不能替代当前事实或用户最新指令。
 
 ## 查询 Memory Graph 历史数据
 

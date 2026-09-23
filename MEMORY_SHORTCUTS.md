@@ -262,6 +262,15 @@ lark-memory-cli memory +get --as user \
 
 ## 获取并应用个人写作风格
 
+在 Codex 输入框中，`$memory-writing-style` 后面的文本就是用户请求，无需提供文档链接：
+
+```text
+$memory-writing-style 帮忙总结下过去两个月的工作
+```
+
+Skill 会先获取该时间范围内的工作事实，再按写作风格组织总结。若 query 要求创建或修改文档，
+Skill 会把风格用于文档内容，并按要求新建或原位修改；未要求文档操作时直接回答。
+
 该命令固定读取以下 Memory：
 
 - `memory_key=personal_memory_snapshot`
@@ -278,7 +287,7 @@ lark-memory-cli memory +writing-style --as user --format json
 
 - `writing_style`：标题、章节、子章节、规则和可选写作场景；
 - `references`：从每条规则来源汇总的文档、IM 和会议索引；
-- `ai_guidance`：原始改写 prompt、单一模板选择、完整 block 读取、严格格式复刻及创建后回读验证的步骤与边界。
+- `ai_guidance`：通用 query 使用流程，以及创建或修改文档时的风格应用、同类型参考文档的实际 block 读取和回读验证规则；不能只根据 Memory 摘要推断格式。
 
 如需在其它泳道验证，可以仅对当前进程覆盖：
 

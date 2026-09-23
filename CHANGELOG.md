@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **memory**: Let `memory-writing-style` handle arbitrary writing queries; keep strict template replication and new-document creation conditional on an explicit rewrite request.
 - **memory**: Add `memory +writing-style` and the `memory-writing-style` selector to read the PPE writing-style Memory through LF IDC and parse it into structured rules, source references, and AI usage guidance.
 - **skills**: Preserve an existing Knowledge QA answer as the Graph Search baseline, merge only useful node and edge evidence, and continue OneHop only when relevant evidence leaves the answer materially incomplete.
 - **memory**: Rename the public time-window command and selector to `memory +graph-range` and `memory-graph-range`; remove `memory +graph-query` and retire the old selector during upgrades.
