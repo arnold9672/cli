@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var ImMessagesReply = common.Shortcut{
@@ -29,11 +29,11 @@ var ImMessagesReply = common.Shortcut{
 		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON"},
 		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
 		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
-		{Name: "image", Desc: "image_key, local file path"},
-		{Name: "file", Desc: "file_key, local file path"},
-		{Name: "video", Desc: "video file_key, local file path; must be used together with --video-cover"},
-		{Name: "video-cover", Desc: "video cover image_key, local file path; required when using --video"},
-		{Name: "audio", Desc: "audio file_key, local file path"},
+		{Name: "image", Desc: "image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
+		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
+		{Name: "audio", Desc: audioMessageInputDesc},
 		{Name: "reply-in-thread", Type: "bool", Desc: "reply in thread (message appears in thread stream instead of main chat)"},
 		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
 	},
@@ -100,22 +100,25 @@ var ImMessagesReply = common.Shortcut{
 				return err
 			}
 		}
+		if err := validateAudioMessageInput("--audio", audioKey); err != nil {
+			return err
+		}
 
 		if messageId == "" {
-			return output.ErrValidation("--message-id is required (om_xxx)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-id is required (om_xxx)").WithParam("--message-id")
 		}
 		if _, err := validateMessageID(messageId); err != nil {
 			return err
 		}
 
 		if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
-			return output.ErrValidation(msg)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg)
 		}
 		if content != "" && !json.Valid([]byte(content)) {
-			return output.ErrValidation("--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")
 		}
 		if msg := validateExplicitMsgType(runtime.Cmd, msgType, text, markdown, imageKey, fileKey, videoKey, audioKey); msg != "" {
-			return output.ErrValidation(msg)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).WithParam("--msg-type")
 		}
 
 		return nil
@@ -167,7 +170,7 @@ var ImMessagesReply = common.Shortcut{
 			data["uuid"] = idempotencyKey
 		}
 
-		resData, err := runtime.DoAPIJSON(http.MethodPost,
+		resData, err := runtime.DoAPIJSONTyped(http.MethodPost,
 			fmt.Sprintf("/open-apis/im/v1/messages/%s/reply", validate.EncodePathSegment(messageId)),
 			nil, data)
 		if err != nil {

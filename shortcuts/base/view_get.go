@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseViewGet = common.Shortcut{

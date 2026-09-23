@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // DeviceAuthResponse is the response from the device authorization endpoint.
@@ -47,6 +47,7 @@ type DeviceFlowResult struct {
 // OAuthEndpoints contains the OAuth endpoint URLs.
 type OAuthEndpoints struct {
 	DeviceAuthorization string
+	Revoke              string
 	Token               string
 }
 
@@ -55,6 +56,7 @@ func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
 	ep := core.ResolveEndpoints(brand)
 	return OAuthEndpoints{
 		DeviceAuthorization: ep.Accounts + PathDeviceAuthorization,
+		Revoke:              ep.Accounts + PathOAuthRevoke,
 		Token:               ep.Open + PathOAuthTokenV2,
 	}
 }
@@ -79,7 +81,6 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 
 	form := url.Values{}
 	form.Set("client_id", appId)
-	form.Set("client_secret", appSecret)
 	form.Set("scope", scope)
 
 	req, err := http.NewRequest("POST", endpoints.DeviceAuthorization, strings.NewReader(form.Encode()))
@@ -143,8 +144,12 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		errOut = io.Discard
 	}
 
+	if interval < 1 {
+		interval = 5
+	}
+
 	const maxPollInterval = 60
-	const maxPollAttempts = 200
+	const maxPollAttempts = 600
 
 	endpoints := ResolveOAuthEndpoints(brand)
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
@@ -201,7 +206,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 		errStr := getStr(data, "error")
 
 		if errStr == "" && getStr(data, "access_token") != "" {
-			fmt.Fprintf(errOut, "[lark-cli] device-flow: token obtained successfully\n")
+			fmt.Fprintf(errOut, "[lark-cli] device-flow: token response received\n")
 			refreshToken := getStr(data, "refresh_token")
 			tokenExpiresIn := getInt(data, "expires_in", 7200)
 			refreshExpiresIn := getInt(data, "refresh_token_expires_in", 604800)

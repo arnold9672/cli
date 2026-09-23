@@ -4,7 +4,7 @@
 package whiteboard
 
 import (
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // Shortcuts returns all whiteboard shortcuts.

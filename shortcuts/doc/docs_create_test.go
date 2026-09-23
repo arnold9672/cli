@@ -9,22 +9,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
-func TestDocsCreateBotAutoGrantSuccess(t *testing.T) {
+// ── V2 (OpenAPI) tests ──
+
+func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	permStub := &httpmock.Stub{
@@ -46,8 +48,7 @@ func TestDocsCreateBotAutoGrantSuccess(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--title", "项目计划",
-		"--markdown", "## 目标",
+		"--content", "<title>项目计划</title><h1>目标</h1>",
 		"--as", "bot",
 	})
 	if err != nil {
@@ -75,19 +76,21 @@ func TestDocsCreateBotAutoGrantSuccess(t *testing.T) {
 	}
 }
 
-func TestDocsCreateBotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
+func TestDocsCreateV2BotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--markdown", "## 内容",
+		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "bot",
 	})
 	if err != nil {
@@ -102,21 +105,26 @@ func TestDocsCreateBotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 	if _, ok := grant["user_open_id"]; ok {
 		t.Fatalf("did not expect user_open_id when current user is missing: %#v", grant)
 	}
+	if !strings.Contains(stderr.String(), "auto-grant was skipped") {
+		t.Fatalf("stderr missing auto-grant skipped warning; got:\n%s", stderr.String())
+	}
 }
 
-func TestDocsCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
+func TestDocsCreateV2UserSkipsPermissionGrantAugmentation(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--markdown", "## 内容",
+		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "user",
 	})
 	if err != nil {
@@ -129,19 +137,21 @@ func TestDocsCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
 	}
 }
 
-func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
+func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/wiki/wikcn_new_node",
-		"message": "文档创建成功",
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	permStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/wikcn_new_node/members",
+		URL:    "/open-apis/drive/v1/permissions/doxcn_new_doc/members",
 		Body: map[string]interface{}{
 			"code": 230001,
 			"msg":  "no permission",
@@ -151,8 +161,7 @@ func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--markdown", "## 内容",
-		"--wiki-space", "my_library",
+		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "bot",
 	})
 	if err != nil {
@@ -170,15 +179,129 @@ func TestDocsCreateBotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 	if !strings.Contains(grant["message"].(string), "retry later") {
 		t.Fatalf("permission_grant.message = %q, want retry guidance", grant["message"])
 	}
-
-	var body map[string]interface{}
-	if err := json.Unmarshal(permStub.CapturedBody, &body); err != nil {
-		t.Fatalf("failed to parse permission request body: %v", err)
-	}
-	if body["perm_type"] != "container" {
-		t.Fatalf("permission request perm_type = %#v, want %q", body["perm_type"], "container")
+	if !strings.Contains(stderr.String(), "auto-grant failed") {
+		t.Fatalf("stderr missing auto-grant failed warning; got:\n%s", stderr.String())
 	}
 }
+
+func TestDocsCreateV2FallbackURLWhenBackendOmitsIt(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			// "url" deliberately omitted to exercise the fallback.
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", "<title>内容</title><p>正文</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if doc == nil {
+		t.Fatalf("missing document in envelope: %#v", data)
+	}
+	if got, want := doc["url"], "https://www.feishu.cn/docx/doxcn_new_doc"; got != want {
+		t.Fatalf("document.url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://tenant.larkoffice.com/docx/doxcn_new_doc",
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", "<title>内容</title><p>正文</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if got, want := doc["url"], "https://tenant.larkoffice.com/docx/doxcn_new_doc"; got != want {
+		t.Fatalf("document.url = %#v, want backend tenant URL %q (fallback must not overwrite)", got, want)
+	}
+}
+
+func TestDocsCreateAPIVersionCompatFlagIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "legacy",
+		"--content", "<title>项目计划</title>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if got, want := doc["document_id"], "doxcn_new_doc"; got != want {
+		t.Fatalf("document.document_id = %#v, want %q", got, want)
+	}
+}
+
+func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--markdown", "## 目标",
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected legacy v1 flags to be rejected")
+	}
+	for _, want := range []string{
+		"docs +create is v2-only",
+		"the old v1 interface has been shut down",
+		"legacy v1 flag(s) --markdown are no longer supported",
+		"--markdown -> use --content with --doc-format markdown",
+		"lark-cli skills read lark-doc references/lark-doc-create.md",
+		"lark-cli skills read lark-doc references/lark-doc-xml.md",
+		"lark-cli skills read lark-doc references/lark-doc-md.md",
+		"follow the latest format rules",
+		"MUST NOT grep/open local SKILL.md files",
+		"lark-cli docs +create --help",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+}
+
+// ── Helpers ──
 
 func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
 	t.Helper()
@@ -193,20 +316,14 @@ func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {
 	}
 }
 
-func registerDocsCreateMCPStub(reg *httpmock.Registry, result map[string]interface{}) {
-	payload, _ := json.Marshal(result)
+func registerDocsCreateAPIStub(reg *httpmock.Registry, data map[string]interface{}) {
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/mcp",
+		URL:    "/open-apis/docs_ai/v1/documents",
 		Body: map[string]interface{}{
-			"result": map[string]interface{}{
-				"content": []map[string]interface{}{
-					{
-						"type": "text",
-						"text": string(payload),
-					},
-				},
-			},
+			"code": 0,
+			"msg":  "ok",
+			"data": data,
 		},
 	})
 }
@@ -214,15 +331,7 @@ func registerDocsCreateMCPStub(reg *httpmock.Registry, result map[string]interfa
 func runDocsCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, args []string) error {
 	t.Helper()
 
-	parent := &cobra.Command{Use: "docs"}
-	DocsCreate.Mount(parent, f)
-	parent.SetArgs(args)
-	parent.SilenceErrors = true
-	parent.SilenceUsage = true
-	if stdout != nil {
-		stdout.Reset()
-	}
-	return parent.Execute()
+	return mountAndRunDocs(t, DocsCreate, args, f, stdout)
 }
 
 func decodeDocsCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {

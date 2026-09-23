@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseDashboardBlockDelete = common.Shortcut{
@@ -21,6 +21,10 @@ var BaseDashboardBlockDelete = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		blockIDFlag(true),
+	},
+	Tips: []string{
+		"lark-cli base +dashboard-block-delete --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --yes",
+		baseHighRiskYesTip,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

@@ -4,13 +4,16 @@
 package task
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func TestBuildTasklistSearchBody(t *testing.T) {
@@ -123,6 +126,7 @@ func TestSearchTasklist_DryRun(t *testing.T) {
 	}
 }
 
+// TestSearchTasklist_Execute verifies tasklist search output, enrichment, and notices.
 func TestSearchTasklist_Execute(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -141,6 +145,7 @@ func TestSearchTasklist_Execute(t *testing.T) {
 						"code": 0,
 						"msg":  "success",
 						"data": map[string]interface{}{
+							"notice":     "The query is too long and has been truncated to the first 50 characters for search.",
 							"has_more":   false,
 							"page_token": "",
 							"items":      []interface{}{map[string]interface{}{"id": "tl-123"}},
@@ -159,7 +164,7 @@ func TestSearchTasklist_Execute(t *testing.T) {
 					},
 				})
 			},
-			wantParts: []string{`"guid": "tl-123"`, `"name": "Q2 Plan"`},
+			wantParts: []string{`"guid": "tl-123"`, `"name": "Q2 Plan"`, `"notice": "The query is too long and has been truncated to the first 50 characters for search."`},
 		},
 		{
 			name: "fallback on detail error",
@@ -259,5 +264,37 @@ func TestSearchTasklist_Execute(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSearchTasklist_MalformedResponse covers the search parse arm: a 200 with
+// an unparseable search body surfaces a typed internal invalid_response error
+// (exit 5). The detail parse arm is swallowed into the fallback path, so only
+// the top-level search parse propagates.
+func TestSearchTasklist_MalformedResponse(t *testing.T) {
+	f, stdout, _, reg := taskShortcutTestFactory(t)
+	warmTenantToken(t, f, reg)
+
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/task/v2/tasklists/search",
+		Status:  200,
+		RawBody: []byte("{not-json"),
+	})
+
+	s := SearchTasklist
+	s.AuthTypes = []string{"bot", "user"}
+	args := []string{"+tasklist-search", "--query", "Q2", "--as", "bot", "--format", "json"}
+	err := runMountedTaskShortcut(t, s, args, f, stdout)
+
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("err = %T, want *errs.InternalError; err = %v", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("exit code = %d, want %d", got, output.ExitInternal)
 	}
 }

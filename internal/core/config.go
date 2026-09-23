@@ -7,15 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 // Identity represents the caller identity for API requests.
@@ -42,7 +42,7 @@ type AppConfig struct {
 	AppId      string      `json:"appId"`
 	AppSecret  SecretInput `json:"appSecret"`
 	Brand      LarkBrand   `json:"brand"`
-	Lang       string      `json:"lang,omitempty"`
+	Lang       i18n.Lang   `json:"lang,omitempty"`
 	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	Users      []AppUser   `json:"users"`
@@ -160,6 +160,7 @@ type CliConfig struct {
 	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
 	UserOpenId          string
 	UserName            string
+	Lang                i18n.Lang
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
@@ -173,24 +174,24 @@ func (c *CliConfig) CanBot() bool {
 	return c.SupportedIdentities == 0 || c.SupportedIdentities&identityBotBit != 0
 }
 
-// GetConfigDir returns the config directory path.
-// If the home directory cannot be determined, it falls back to a relative path
-// and prints a warning to stderr.
+// GetConfigDir returns the config directory path for the current workspace.
+// When workspace is local (default), this returns the same path as before
+// (LARKSUITE_CLI_CONFIG_DIR or ~/.lark-cli) — fully backward-compatible.
+// When workspace is openclaw/hermes, returns base/openclaw or base/hermes.
 func GetConfigDir() string {
-	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
-		return dir
-	}
-	home, err := vfs.UserHomeDir()
-	if err != nil || home == "" {
-		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
-	}
-	return filepath.Join(home, ".lark-cli")
+	return GetRuntimeDir()
 }
 
-// GetConfigPath returns the config file path.
+// GetConfigPath returns the config file path for the current workspace.
 func GetConfigPath() string {
 	return filepath.Join(GetConfigDir(), "config.json")
 }
+
+// ErrMalformedConfig marks a config-load failure caused by malformed file
+// content (unparseable JSON, structurally empty) rather than a missing or
+// unreadable file. Callers classify with errors.Is rather than sniffing the
+// message text.
+var ErrMalformedConfig = errors.New("malformed config")
 
 // LoadMultiAppConfig loads multi-app config from disk.
 func LoadMultiAppConfig() (*MultiAppConfig, error) {
@@ -201,10 +202,10 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 
 	var multi MultiAppConfig
 	if err := json.Unmarshal(data, &multi); err != nil {
-		return nil, fmt.Errorf("invalid config format: %w", err)
+		return nil, fmt.Errorf("invalid config format: %w: %w", ErrMalformedConfig, err)
 	}
 	if len(multi.Apps) == 0 {
-		return nil, fmt.Errorf("invalid config format: no apps")
+		return nil, fmt.Errorf("invalid config format: no apps: %w", ErrMalformedConfig)
 	}
 	return &multi, nil
 }
@@ -232,7 +233,7 @@ func RequireConfig(kc keychain.KeychainAccess) (*CliConfig, error) {
 func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
 	raw, err := LoadMultiAppConfig()
 	if err != nil || raw == nil || len(raw.Apps) == 0 {
-		return nil, &ConfigError{Code: 2, Type: "config", Message: "not configured", Hint: "run `lark-cli config init --new` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete setup."}
+		return nil, NotConfiguredError()
 	}
 	return ResolveConfigFromMulti(raw, kc, profileOverride)
 }
@@ -242,35 +243,33 @@ func RequireConfigForProfile(kc keychain.KeychainAccess, profileOverride string)
 func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, profileOverride string) (*CliConfig, error) {
 	app := raw.CurrentAppConfig(profileOverride)
 	if app == nil {
-		return nil, &ConfigError{
-			Code:    2,
-			Type:    "config",
-			Message: fmt.Sprintf("profile %q not found", profileOverride),
-			Hint:    fmt.Sprintf("available profiles: %s", formatProfileNames(raw.ProfileNames())),
-		}
+		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found", profileOverride).
+			WithHint("available profiles: %s", formatProfileNames(raw.ProfileNames()))
 	}
 
 	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, &ConfigError{Code: 2, Type: "config",
-			Message: "appId and appSecret keychain key are out of sync",
-			Hint:    err.Error()}
+		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
+			WithHint("%s", err.Error()).
+			WithCause(err)
 	}
 
 	secret, err := ResolveSecretInput(app.AppSecret, kc)
 	if err != nil {
-		// If the error comes from the keychain, it will already be wrapped as an ExitError.
-		// For other errors (e.g. file read errors, unknown sources), wrap them as ConfigError.
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, exitErr
+		if errs.IsTyped(err) {
+			return nil, err
 		}
-		return nil, &ConfigError{Code: 2, Type: "config", Message: err.Error()}
+		subtype := errs.SubtypeNotConfigured
+		if isMalformedConfigError(err) {
+			subtype = errs.SubtypeInvalidConfig
+		}
+		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
 	}
 	cfg := &CliConfig{
 		ProfileName: app.ProfileName(),
 		AppID:       app.AppId,
 		AppSecret:   secret,
 		Brand:       app.Brand,
+		Lang:        app.Lang,
 		DefaultAs:   app.DefaultAs,
 	}
 	if len(app.Users) > 0 {
@@ -292,7 +291,8 @@ func RequireAuthForProfile(kc keychain.KeychainAccess, profileOverride string) (
 		return nil, err
 	}
 	if cfg.UserOpenId == "" {
-		return nil, &ConfigError{Code: 3, Type: "auth", Message: "not logged in", Hint: "run `lark-cli auth login` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login."}
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").
+			WithHint("run `lark-cli auth login` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.")
 	}
 	return cfg, nil
 }

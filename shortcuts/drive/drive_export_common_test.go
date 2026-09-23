@@ -64,4 +64,16 @@ func TestSanitizeExportFileNameAndEnsureExtension(t *testing.T) {
 	if got := ensureExportFileExtension("report.pdf", "pdf"); got != "report.pdf" {
 		t.Fatalf("ensureExportFileExtension() should preserve suffix, got %q", got)
 	}
+	if got := ensureExportFileExtension("crm", "base"); got != "crm.base" {
+		t.Fatalf("ensureExportFileExtension() = %q, want %q", got, "crm.base")
+	}
+	if got := exportFileSuffix("base"); got != ".base" {
+		t.Fatalf("exportFileSuffix(base) = %q, want %q", got, ".base")
+	}
+	if got := ensureExportFileExtension("report", "pptx"); got != "report.pptx" {
+		t.Fatalf("ensureExportFileExtension() = %q, want %q", got, "report.pptx")
+	}
+	if got := ensureExportFileExtension("report.pptx", "pptx"); got != "report.pptx" {
+		t.Fatalf("ensureExportFileExtension() should preserve suffix, got %q", got)
+	}
 }

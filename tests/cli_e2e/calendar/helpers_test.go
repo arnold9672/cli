@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	clie2e "code.byted.org/lark_search/larksuite-cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -23,11 +23,43 @@ func getPrimaryCalendarID(t *testing.T, ctx context.Context) string {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	calendarID := gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
 	require.NotEmpty(t, calendarID, "stdout:\n%s", result.Stdout)
 	return calendarID
+}
+
+func getCurrentUserPrimaryCalendarID(t *testing.T, ctx context.Context) string {
+	t.Helper()
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"calendar", "calendars", "primary"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, true)
+
+	calendarID := gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
+	require.NotEmpty(t, calendarID, "stdout:\n%s", result.Stdout)
+	return calendarID
+}
+
+func getCurrentUserOpenIDForCalendar(t *testing.T, ctx context.Context) string {
+	t.Helper()
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"contact", "+get-user"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, true)
+
+	openID := gjson.Get(result.Stdout, "data.user.open_id").String()
+	require.NotEmpty(t, openID, "stdout:\n%s", result.Stdout)
+	return openID
 }
 
 func unixSecondsRFC3339(t time.Time) string {

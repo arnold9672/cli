@@ -1,6 +1,6 @@
 {
   "name": "@larksuite/cli",
-  "version": "1.0.13",
+  "version": "1.0.2",
   "description": "The official CLI for Lark/Feishu open platform",
   "bin": {
     "lark-cli": "scripts/run.js"
@@ -15,7 +15,8 @@
   ],
   "cpu": [
     "x64",
-    "arm64"
+    "arm64",
+    "riscv64"
   ],
   "engines": {
     "node": ">=16"
@@ -29,6 +30,7 @@
     "scripts/install.js",
     "scripts/install-wizard.js",
     "scripts/run.js",
+    "checksums.txt",
     "CHANGELOG.md"
   ],
   "dependencies": {

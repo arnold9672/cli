@@ -9,15 +9,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // CheckOptions holds all inputs for auth check.
 type CheckOptions struct {
 	Factory *cmdutil.Factory
 	Scope   string
+	JSON    bool
 }
 
 // NewCmdAuthCheck creates the auth check subcommand.
@@ -36,7 +38,9 @@ func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.
 	}
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to check (space-separated)")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.MarkFlagRequired("scope")
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }
@@ -46,8 +50,7 @@ func authCheckRun(opts *CheckOptions) error {
 
 	required := strings.Fields(opts.Scope)
 	if len(required) == 0 {
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"ok": true, "granted": []string{}, "missing": []string{}})
-		return nil
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--scope cannot be empty").WithParam("--scope")
 	}
 
 	config, err := f.Config()

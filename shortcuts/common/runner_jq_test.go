@@ -13,10 +13,10 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // newJqTestContext creates a RuntimeContext wired for jq testing.
@@ -145,10 +145,10 @@ func TestRuntimeContext_FileIO_UsesExecutionContext(t *testing.T) {
 	}
 }
 
-func newTestShortcutCmd(s *Shortcut) *cobra.Command {
+func newTestShortcutCmd(s *Shortcut, f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{Use: "test-shortcut"}
 	cmd.SetContext(context.Background())
-	registerShortcutFlags(cmd, s)
+	registerShortcutFlags(cmd, f, s)
 	return cmd
 }
 
@@ -177,7 +177,7 @@ func TestRunShortcut_JqAndFormatConflict(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s)
+	cmd := newTestShortcutCmd(s, newTestFactory())
 	cmd.Flags().Set("jq", ".data")
 	cmd.Flags().Set("format", "table")
 	cmd.Flags().Set("as", "bot")
@@ -186,9 +186,7 @@ func TestRunShortcut_JqAndFormatConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for --jq + --format table conflict")
 	}
-	if !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
-	}
+	requireValidation(t, err, "mutually exclusive")
 }
 
 func TestRunShortcut_JqInvalidExpression(t *testing.T) {
@@ -200,7 +198,7 @@ func TestRunShortcut_JqInvalidExpression(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s)
+	cmd := newTestShortcutCmd(s, newTestFactory())
 	cmd.Flags().Set("jq", "invalid[")
 	cmd.Flags().Set("as", "bot")
 
@@ -208,9 +206,7 @@ func TestRunShortcut_JqInvalidExpression(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid jq expression")
 	}
-	if !strings.Contains(err.Error(), "invalid jq expression") {
-		t.Errorf("expected 'invalid jq expression' error, got: %v", err)
-	}
+	requireValidation(t, err, "invalid jq expression")
 }
 
 func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {
@@ -223,7 +219,7 @@ func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {
 			return nil
 		},
 	}
-	cmd := newTestShortcutCmd(s)
+	cmd := newTestShortcutCmd(s, newTestFactory())
 	cmd.Flags().Set("jq", ".foo | invalid_func_xyz")
 	cmd.Flags().Set("as", "bot")
 

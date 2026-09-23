@@ -5,21 +5,21 @@ package cmdutil
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"strings"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 )
 
 // Factory holds shared dependencies injected into every command.
@@ -39,10 +39,13 @@ type Factory struct {
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
 	IdentityAutoDetected bool                    // set by ResolveAs when identity was auto-detected
 	ResolvedIdentity     core.Identity           // identity resolved by the last ResolveAs call
+	CurrentCommand       *cobra.Command          // last matched command being executed; set during PersistentPreRun
 
 	Credential *credential.CredentialProvider
 
 	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
+
+	SkillContent fs.FS // embedded skill tree (rooted at the skill list); nil when the build embeds no skills
 }
 
 // ResolveFileIO resolves a FileIO instance using the current execution context.
@@ -60,18 +63,20 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
-	// Strict mode: force identity regardless of flags or config.
-	if forced := f.ResolveStrictMode(ctx).ForcedIdentity(); forced != "" {
-		f.ResolvedIdentity = forced
-		return forced
-	}
-
 	if cmd != nil && cmd.Flags().Changed("as") {
-		if flagAs != "auto" {
+		if flagAs != core.AsAuto {
 			f.ResolvedIdentity = flagAs
 			return flagAs
 		}
 		// --as auto: fall through to auto-detect
+	}
+
+	mode := f.ResolveStrictMode(ctx)
+	// Strict mode forces implicit identity choices. Explicit --as user/bot is
+	// preserved above so CheckStrictMode can reject incompatible requests.
+	if forced := mode.ForcedIdentity(); forced != "" {
+		f.ResolvedIdentity = forced
+		return forced
 	}
 
 	hint := f.resolveIdentityHint(ctx)
@@ -126,11 +131,18 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 	}
 	list := strings.Join(supported, ", ")
 	if f.IdentityAutoDetected {
-		return output.ErrValidation(
-			"resolved identity %q (via auto-detect or default-as) is not supported, this command only supports: %s\nhint: use --as %s",
-			as, list, supported[0])
+		base := errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"resolved identity %q (via auto-detect or default-as) is not supported, this command only supports: %s",
+			as, list).
+			WithParam("--as")
+		if len(supported) > 0 {
+			return base.WithHint("use --as %s", supported[0])
+		}
+		return base
 	}
-	return fmt.Errorf("--as %s is not supported, this command only supports: %s", as, list)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"--as %s is not supported, this command only supports: %s", as, list).
+		WithParam("--as")
 }
 
 // ResolveStrictMode returns the effective strict mode by reading
@@ -158,10 +170,9 @@ func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 func (f *Factory) CheckStrictMode(ctx context.Context, as core.Identity) error {
 	mode := f.ResolveStrictMode(ctx)
 	if mode.IsActive() && !mode.AllowsIdentity(as) {
-		return output.Errorf(output.ExitValidation, "strict_mode",
-			"strict mode is %q, only %s identity is allowed. "+
-				"This setting is managed by the administrator and must not be modified by AI agents.",
-			mode, mode.ForcedIdentity())
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"strict mode is %q, only %s-identity commands are available", mode, mode.ForcedIdentity()).
+			WithHint("if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
 	}
 	return nil
 }
@@ -198,4 +209,27 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 		ErrOut:     errOut,
 		Credential: f.Credential,
 	}, nil
+}
+
+// RequireBuiltinCredentialProvider returns a typed validation error when an
+// extension provider is actively managing credentials. Intended for use as
+// PersistentPreRunE on the auth and config parent commands.
+//
+// Returns nil when:
+//   - f.Credential is nil (test environments without credential setup)
+//   - No extension provider is active (built-in keychain/config path is used)
+func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command string) error {
+	if f.Credential == nil {
+		return nil
+	}
+	provName, err := f.Credential.ActiveExtensionProviderName(ctx)
+	if err != nil {
+		return err
+	}
+	if provName == "" {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"%q is not supported: credentials are provided externally and do not support interactive management", command).
+		WithHint("If another tool or method for authorization is available in this environment, try that. Otherwise, ask the user to set up credentials through the appropriate channel.")
 }

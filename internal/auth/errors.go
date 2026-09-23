@@ -4,21 +4,16 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 const (
-	LarkErrBlockByPolicy        = 21001 // access denied by access control policy
-	LarkErrBlockByPolicyTryAuth = 21000 // access denied by access control policy; challenge is required to be completed by user in order to gain access
+	needUserAuthorizationMarker = "need_user_authorization"
 )
-
-// RefreshTokenRetryable contains error codes that allow one immediate retry.
-// All other refresh errors clear the token immediately.
-var RefreshTokenRetryable = map[int]bool{
-	output.LarkErrRefreshServerError: true,
-}
 
 // TokenRetryCodes contains error codes that allow retry after token refresh.
 var TokenRetryCodes = map[int]bool{
@@ -26,34 +21,47 @@ var TokenRetryCodes = map[int]bool{
 	output.LarkErrTokenExpired: true,
 }
 
-// NeedAuthorizationError is thrown when no valid UAT exists.
+// NeedAuthorizationError is the sentinel preserved in the Cause chain of the
+// typed missing-UAT error so existing errors.As(&NeedAuthorizationError{})
+// consumers keep matching after the construction site moved to the typed
+// taxonomy. It is never surfaced on the wire on its own.
 type NeedAuthorizationError struct {
 	UserOpenId string
 }
 
 // Error returns the error message for NeedAuthorizationError.
 func (e *NeedAuthorizationError) Error() string {
-	return fmt.Sprintf("need_user_authorization (user: %s)", e.UserOpenId)
+	return fmt.Sprintf("%s (user: %s)", needUserAuthorizationMarker, e.UserOpenId)
 }
 
-// SecurityPolicyError is returned when a request is blocked by access control policies.
-type SecurityPolicyError struct {
-	Code         int
-	Message      string
-	ChallengeURL string
-	CLIHint      string
-	Err          error
+// NewNeedUserAuthorizationError builds the typed *errs.AuthenticationError
+// returned when no valid UAT exists for userOpenID. The Message keeps the
+// need_user_authorization marker, the Hint converges on the same auth-login
+// recovery vocabulary as the token-missing surface in internal/client, and the
+// legacy *NeedAuthorizationError sentinel is preserved in the Cause chain for
+// errors.As / errors.Is traversal.
+func NewNeedUserAuthorizationError(userOpenID string) *errs.AuthenticationError {
+	return errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+		"%s (user: %s)", needUserAuthorizationMarker, userOpenID).
+		WithUserOpenID(userOpenID).
+		WithHint("run: lark-cli auth login to re-authorize").
+		WithCause(&NeedAuthorizationError{UserOpenId: userOpenID})
 }
 
-// Error returns the error message for SecurityPolicyError.
-func (e *SecurityPolicyError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("security policy error [%d]: %s: %v", e.Code, e.Message, e.Err)
+// IsNeedUserAuthorizationError reports whether err represents a missing-UAT
+// failure. It matches the legacy *NeedAuthorizationError sentinel, which is
+// preserved in the Cause chain of the typed missing-UAT error, so errors.As
+// traverses into the typed *errs.AuthenticationError as well.
+func IsNeedUserAuthorizationError(err error) bool {
+	if err == nil {
+		return false
 	}
-	return fmt.Sprintf("security policy error [%d]: %s", e.Code, e.Message)
+
+	var needAuthErr *NeedAuthorizationError
+	return errors.As(err, &needAuthErr)
 }
 
-// Unwrap returns the underlying error.
-func (e *SecurityPolicyError) Unwrap() error {
-	return e.Err
-}
+// SecurityPolicyError is preserved as a Go type alias so existing
+// errors.As(&SecurityPolicyError{}) consumers (cmd/root.go etc.) keep working.
+// The concrete struct lives in errs/types.go.
+type SecurityPolicyError = errs.SecurityPolicyError

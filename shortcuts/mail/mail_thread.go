@@ -5,19 +5,25 @@ package mail
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strconv"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
+// mailThreadOutput is the +thread JSON output: the thread identifier,
+// the number of messages in it, and the messages themselves in
+// chronological order.
 type mailThreadOutput struct {
 	ThreadID     string                   `json:"thread_id"`
 	MessageCount int                      `json:"message_count"`
 	Messages     []map[string]interface{} `json:"messages"`
 }
 
+// sortThreadMessagesByInternalDate filters out messages without a message_id
+// and orders the rest ascending by internal_date (parsed via
+// parseInternalDateMillis). Used to give +thread output a stable
+// chronological order regardless of API return order.
 func sortThreadMessagesByInternalDate(outs []map[string]interface{}) []map[string]interface{} {
 	messages := make([]map[string]interface{}, 0, len(outs))
 	for _, o := range outs {
@@ -34,6 +40,8 @@ func sortThreadMessagesByInternalDate(outs []map[string]interface{}) []map[strin
 	return messages
 }
 
+// MailThread is the `+thread` shortcut: fetch a full mail conversation by
+// thread ID, returning every message in chronological order.
 var MailThread = common.Shortcut{
 	Service:     "mail",
 	Command:     "+thread",
@@ -48,6 +56,9 @@ var MailThread = common.Shortcut{
 		{Name: "html", Type: "bool", Default: "true", Desc: "Whether to return HTML body (false returns plain text only to save bandwidth)"},
 		{Name: "include-spam-trash", Type: "bool", Desc: "Also return messages from SPAM and TRASH folders (excluded by default)"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateBotMailboxNotMe(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
@@ -76,9 +87,9 @@ var MailThread = common.Shortcut{
 		if runtime.Bool("include-spam-trash") {
 			params["include_spam_trash"] = true
 		}
-		listData, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "threads", threadID), params, nil)
+		listData, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "threads", threadID), params, nil)
 		if err != nil {
-			return fmt.Errorf("failed to get thread: %w", err)
+			return mailDecorateProblemMessage(err, "failed to get thread")
 		}
 		// New API: data.thread.messages[]; fallback to old API: data.items[].message
 		var items []interface{}
@@ -111,6 +122,17 @@ var MailThread = common.Shortcut{
 		messages := sortThreadMessagesByInternalDate(outs)
 
 		runtime.Out(mailThreadOutput{ThreadID: threadID, MessageCount: len(messages), Messages: messages}, nil)
+		for _, item := range items {
+			envelope, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			msg := envelope
+			if inner, ok := envelope["message"].(map[string]interface{}); ok {
+				msg = inner
+			}
+			maybeHintReadReceiptRequest(runtime, mailboxID, strVal(msg["message_id"]), msg)
+		}
 		return nil
 	},
 }

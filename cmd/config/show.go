@@ -9,9 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,7 @@ func NewCmdConfigShow(f *cmdutil.Factory, runF func(*ConfigShowOptions) error) *
 			return configShowRun(opts)
 		},
 	}
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }
@@ -44,16 +46,16 @@ func configShowRun(opts *ConfigShowOptions) error {
 	config, err := core.LoadMultiAppConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+			return core.NotConfiguredError()
 		}
-		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
+		return errs.NewConfigError(errs.SubtypeInvalidConfig, "failed to load config: %v", err).WithCause(err)
 	}
 	if config == nil || len(config.Apps) == 0 {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return core.NotConfiguredError()
 	}
 	app := config.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli profile list")
+		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").WithHint("run: lark-cli profile list")
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {
@@ -64,6 +66,7 @@ func configShowRun(opts *ConfigShowOptions) error {
 		users = strings.Join(userStrs, ", ")
 	}
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+		"workspace": core.CurrentWorkspace().Display(),
 		"profile":   app.ProfileName(),
 		"appId":     app.AppId,
 		"appSecret": "****",

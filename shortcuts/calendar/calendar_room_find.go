@@ -8,15 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -66,7 +66,8 @@ type roomFindSlot struct {
 type roomFindTimeSlot struct {
 	Start        string                `json:"start,omitempty"`
 	End          string                `json:"end,omitempty"`
-	MeetingRooms []*roomFindSuggestion `json:"meeting_rooms,omitempty"`
+	MeetingRooms []*roomFindSuggestion `json:"meeting_rooms"`
+	Hint         string                `json:"hint,omitempty"`
 }
 
 type roomFindOutput struct {
@@ -103,11 +104,18 @@ func collectRoomFindResults(slots []roomFindSlot, limit int, fetch func(roomFind
 				}
 				return
 			}
-			out.TimeSlots = append(out.TimeSlots, &roomFindTimeSlot{
+			if suggestions == nil {
+				suggestions = []*roomFindSuggestion{}
+			}
+			ts := &roomFindTimeSlot{
 				Start:        slot.Start,
 				End:          slot.End,
 				MeetingRooms: suggestions,
-			})
+			}
+			if len(suggestions) == 0 {
+				ts.Hint = "no meeting room matches the current filters for this slot"
+			}
+			out.TimeSlots = append(out.TimeSlots, ts)
 		}(slot)
 	}
 	wg.Wait()
@@ -126,40 +134,40 @@ func collectRoomFindResults(slots []roomFindSlot, limit int, fetch func(roomFind
 func parseRoomFindSlots(runtime *common.RuntimeContext) ([]roomFindSlot, error) {
 	rawSlots := runtime.StrArray(flagSlot)
 	if len(rawSlots) == 0 {
-		return nil, output.ErrValidation("specify at least one --slot")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one --slot").WithParam("--slot")
 	}
 	slots := make([]roomFindSlot, 0, len(rawSlots))
 	for _, raw := range rawSlots {
 		parts := strings.Split(strings.TrimSpace(raw), "~")
 		if len(parts) != 2 {
-			return nil, output.ErrValidation("invalid --slot format %q, expected start~end", raw)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --slot format %q, expected start~end", raw).WithParam("--slot")
 		}
 		startTs, err := common.ParseTime(parts[0])
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot start time %q: %v", parts[0], err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot start time %q: %v", parts[0], err).WithParam("--slot")
 		}
 		endTs, err := common.ParseTime(parts[1])
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot end time %q: %v", parts[1], err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot end time %q: %v", parts[1], err).WithParam("--slot")
 		}
 		startSec, err := strconv.ParseInt(startTs, 10, 64)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot start timestamp %q: %v", startTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot start timestamp %q: %v", startTs, err).WithParam("--slot")
 		}
 		endSec, err := strconv.ParseInt(endTs, 10, 64)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot end timestamp %q: %v", endTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot end timestamp %q: %v", endTs, err).WithParam("--slot")
 		}
 		if endSec <= startSec {
-			return nil, output.ErrValidation("--slot end time must be after start time: %q", raw)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slot end time must be after start time: %q", raw).WithParam("--slot")
 		}
 		startRFC3339, err := unixStringToRFC3339(startTs)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot start timestamp %q: %v", startTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot start timestamp %q: %v", startTs, err).WithParam("--slot")
 		}
 		endRFC3339, err := unixStringToRFC3339(endTs)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot end timestamp %q: %v", endTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot end timestamp %q: %v", endTs, err).WithParam("--slot")
 		}
 		slots = append(slots, roomFindSlot{Start: startRFC3339, End: endRFC3339})
 	}
@@ -196,7 +204,7 @@ func parseRoomFindAttendees(attendeesStr string, currentUserID string) ([]string
 				seenChats[id] = true
 			}
 		default:
-			return nil, nil, output.ErrValidation("invalid attendee id format %q: should start with 'ou_' or 'oc_'", id)
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_' or 'oc_'", id).WithParam("--" + flagAttendees)
 		}
 	}
 	if currentUserID != "" && !seenUsers[currentUserID] {
@@ -205,12 +213,24 @@ func parseRoomFindAttendees(attendeesStr string, currentUserID string) ([]string
 	return userIDs, chatIDs, nil
 }
 
+func normalizeCommaSeparatedNames(raw string) string {
+	parts := strings.Split(raw, ",")
+	var cleaned []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			cleaned = append(cleaned, p)
+		}
+	}
+	return strings.Join(cleaned, ",")
+}
+
 func buildRoomFindBaseRequest(runtime *common.RuntimeContext) (*roomFindRequest, error) {
 	req := &roomFindRequest{
 		City:        strings.TrimSpace(runtime.Str(flagCity)),
 		Building:    strings.TrimSpace(runtime.Str(flagBuilding)),
 		Floor:       strings.TrimSpace(runtime.Str(flagFloor)),
-		RoomName:    strings.TrimSpace(runtime.Str(flagRoomName)),
+		RoomName:    normalizeCommaSeparatedNames(runtime.Str(flagRoomName)),
 		MinCapacity: runtime.Int(flagMinCapacity),
 		MaxCapacity: runtime.Int(flagMaxCapacity),
 		Timezone:    strings.TrimSpace(runtime.Str(flagTimezone)),
@@ -237,20 +257,19 @@ func callRoomFind(runtime *common.RuntimeContext, req *roomFindRequest) ([]*room
 		Body:       req,
 	})
 	if err != nil {
-		return nil, err
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
+		return nil, errs.WrapInternal(err)
 	}
 
-	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-		return nil, output.ErrAPI(apiResp.StatusCode, "", string(apiResp.RawBody))
+	if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+		return nil, err
 	}
 
 	var resp = &OpenAPIResponse[*roomFindData]{}
 	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return nil, output.ErrWithHint(output.ExitInternal, "validation", "unmarshal response fail", err.Error())
-	}
-
-	if resp.Code != 0 {
-		return nil, output.ErrAPI(resp.Code, resp.Msg, resp.Data)
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "unmarshal response fail").WithCause(err)
 	}
 
 	if resp.Data != nil {
@@ -272,7 +291,7 @@ var CalendarRoomFind = common.Shortcut{
 		{Name: flagCity, Type: "string", Desc: "meeting room city constraint"},
 		{Name: flagBuilding, Type: "string", Desc: "meeting room building constraint"},
 		{Name: flagFloor, Type: "string", Desc: "meeting room floor constraint (e.g., F2)"},
-		{Name: flagRoomName, Type: "string", Desc: "meeting room name constraint (e.g., 木星, 02)"},
+		{Name: flagRoomName, Type: "string", Desc: "meeting room name constraint; comma-separated for multiple names (e.g., 01,02,03)"},
 		{Name: flagMinCapacity, Type: "int", Desc: "minimum meeting room capacity"},
 		{Name: flagMaxCapacity, Type: "int", Desc: "maximum meeting room capacity"},
 		{Name: flagAttendees, Type: "string", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_)"},
@@ -303,11 +322,20 @@ var CalendarRoomFind = common.Shortcut{
 		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
 			return err
 		}
-		for _, flag := range []string{flagCity, flagBuilding, flagFloor, flagRoomName, flagEventRrule, flagTimezone} {
+		for _, flag := range []string{flagCity, flagBuilding, flagFloor, flagEventRrule, flagTimezone} {
 			if val := strings.TrimSpace(runtime.Str(flag)); val != "" {
-				if err := common.RejectDangerousChars("--"+flag, val); err != nil {
-					return output.ErrValidation(err.Error())
+				if err := common.RejectDangerousCharsTyped("--"+flag, val); err != nil {
+					return err
 				}
+			}
+		}
+		for _, name := range strings.Split(runtime.Str(flagRoomName), ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if err := common.RejectDangerousCharsTyped("--"+flagRoomName, name); err != nil {
+				return err
 			}
 		}
 		if _, err := parseRoomFindSlots(runtime); err != nil {
@@ -317,13 +345,13 @@ var CalendarRoomFind = common.Shortcut{
 			return err
 		}
 		if minCapacity := runtime.Int(flagMinCapacity); minCapacity < 0 {
-			return output.ErrValidation("--min-capacity must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--min-capacity must be >= 0").WithParam("--min-capacity")
 		}
 		if maxCapacity := runtime.Int(flagMaxCapacity); maxCapacity < 0 {
-			return output.ErrValidation("--max-capacity must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--max-capacity must be >= 0").WithParam("--max-capacity")
 		}
 		if minCapacity, maxCapacity := runtime.Int(flagMinCapacity), runtime.Int(flagMaxCapacity); minCapacity > 0 && maxCapacity > 0 && minCapacity > maxCapacity {
-			return output.ErrValidation("--min-capacity must be <= --max-capacity")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--min-capacity must be <= --max-capacity").WithParam("--min-capacity")
 		}
 		return nil
 	},
@@ -354,6 +382,10 @@ var CalendarRoomFind = common.Shortcut{
 			}
 			for _, slot := range out.TimeSlots {
 				fmt.Fprintf(w, "%s - %s\n", slot.Start, slot.End)
+				if len(slot.MeetingRooms) == 0 {
+					fmt.Fprintf(w, "0 meeting room(s) found: %s\n", slot.Hint)
+					continue
+				}
 				var rows []map[string]interface{}
 				for _, room := range slot.MeetingRooms {
 					rows = append(rows, map[string]interface{}{
@@ -364,6 +396,7 @@ var CalendarRoomFind = common.Shortcut{
 					})
 				}
 				output.PrintTable(w, rows)
+				fmt.Fprintf(w, "%d meeting room(s) found\n", len(slot.MeetingRooms))
 				fmt.Fprintln(w)
 			}
 		})

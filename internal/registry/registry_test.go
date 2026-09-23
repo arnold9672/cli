@@ -65,8 +65,7 @@ func TestSelectRecommendedScope_PicksHighestScore(t *testing.T) {
 	}
 	t.Logf("%s=%d, %s=%d", scopeA, scoreA, scopeB, scoreB)
 
-	scopes := []interface{}{scopeB, scopeA}
-	result := SelectRecommendedScope(scopes, "user")
+	result := bestScope([]string{scopeB, scopeA}, priorities)
 
 	// Should pick the higher-scored one (higher = more recommended)
 	if scoreA > scoreB {
@@ -81,11 +80,11 @@ func TestSelectRecommendedScope_PicksHighestScore(t *testing.T) {
 }
 
 func TestSelectRecommendedScope_FallbackToFirst(t *testing.T) {
-	scopes := []interface{}{
+	scopes := []string{
 		"zzz_unknown:scope:a",
 		"zzz_unknown:scope:b",
 	}
-	result := SelectRecommendedScope(scopes, "user")
+	result := bestScope(scopes, LoadScopePriorities())
 	// All unknown scopes get DefaultScopeScore; first one with that score wins
 	if result != "zzz_unknown:scope:a" {
 		t.Errorf("expected zzz_unknown:scope:a, got %s", result)
@@ -93,13 +92,10 @@ func TestSelectRecommendedScope_FallbackToFirst(t *testing.T) {
 }
 
 func TestSelectRecommendedScope_Empty(t *testing.T) {
-	result := SelectRecommendedScope(nil, "user")
-	if result != "" {
+	if result := bestScope(nil, LoadScopePriorities()); result != "" {
 		t.Errorf("expected empty string, got %s", result)
 	}
-
-	result = SelectRecommendedScope([]interface{}{}, "user")
-	if result != "" {
+	if result := bestScope([]string{}, LoadScopePriorities()); result != "" {
 		t.Errorf("expected empty string, got %s", result)
 	}
 }
@@ -231,14 +227,9 @@ func TestLoadAutoApproveSet(t *testing.T) {
 		t.Fatal("expected non-empty auto-approve set")
 	}
 
-	// From scope_overrides.json allow list
-	if !aaSet["calendar:calendar.event:create"] {
-		t.Error("expected calendar:calendar.event:create in auto-approve set (from allow list)")
-	}
-
-	// Verify allow list entries are present
+	// From scope_priorities.json recommend=="true"
 	if !aaSet["sheets:spreadsheet:read"] {
-		t.Error("expected sheets:spreadsheet:read in auto-approve set (from allow list)")
+		t.Error("expected sheets:spreadsheet:read in auto-approve set (recommend=true in priorities)")
 	}
 
 	t.Logf("Auto-approve set has %d scopes", len(aaSet))
@@ -257,16 +248,10 @@ func TestLoadPlatformAutoApproveSet(t *testing.T) {
 
 func TestLoadOverrideAutoApproveAllow(t *testing.T) {
 	allowSet := LoadOverrideAutoApproveAllow()
-	if len(allowSet) == 0 {
-		t.Fatal("expected non-empty override allow set")
-	}
-
-	// Known entries from scope_overrides.json
-	if !allowSet["calendar:calendar.event:create"] {
-		t.Error("expected calendar:calendar.event:create in allow set")
-	}
-	if !allowSet["mail:event"] {
-		t.Error("expected mail:event in allow set")
+	// recommend.allow in scope_overrides.json is intentionally empty:
+	// no scopes are special-cased into the auto-approve set anymore.
+	if len(allowSet) != 0 {
+		t.Errorf("expected empty override allow set, got %d entries", len(allowSet))
 	}
 }
 
@@ -277,9 +262,9 @@ func TestLoadOverrideAutoApproveDeny(t *testing.T) {
 }
 
 func TestIsAutoApproveScope(t *testing.T) {
-	// Known auto-approve scope (in allow list)
-	if !IsAutoApproveScope("calendar:calendar.event:create") {
-		t.Error("expected calendar:calendar.event:create to be auto-approve")
+	// Known auto-approve scope (recommend=true in scope_priorities.json)
+	if !IsAutoApproveScope("sheets:spreadsheet:read") {
+		t.Error("expected sheets:spreadsheet:read to be auto-approve")
 	}
 
 	// Completely unknown scope
@@ -290,9 +275,8 @@ func TestIsAutoApproveScope(t *testing.T) {
 
 func TestFilterAutoApproveScopes(t *testing.T) {
 	scopes := []string{
-		"calendar:calendar.event:create", // auto-approve (in allow list)
-		"zzz:unknown:scope",              // not in auto-approve
-		"sheets:spreadsheet:read",        // auto-approve (in allow list)
+		"sheets:spreadsheet:read", // auto-approve (recommend=true in priorities)
+		"zzz:unknown:scope",       // not in auto-approve
 	}
 
 	result := FilterAutoApproveScopes(scopes)
@@ -300,10 +284,10 @@ func TestFilterAutoApproveScopes(t *testing.T) {
 		t.Fatal("expected at least 1 auto-approve scope in result")
 	}
 
-	// Check that calendar:calendar.event:create is included
+	// Check that sheets:spreadsheet:read is included
 	found := false
 	for _, s := range result {
-		if s == "calendar:calendar.event:create" {
+		if s == "sheets:spreadsheet:read" {
 			found = true
 		}
 		// Ensure unknown scopes are not included
@@ -312,7 +296,7 @@ func TestFilterAutoApproveScopes(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected calendar:calendar.event:create in result")
+		t.Error("expected sheets:spreadsheet:read in result")
 	}
 }
 
@@ -329,27 +313,6 @@ func TestFilterAutoApproveScopes_Empty(t *testing.T) {
 }
 
 // --- Helper functions ---
-
-func TestGetStrFromMap(t *testing.T) {
-	m := map[string]interface{}{
-		"key1": "value1",
-		"key2": 42,
-		"key3": nil,
-	}
-
-	if v := GetStrFromMap(m, "key1"); v != "value1" {
-		t.Errorf("expected value1, got %s", v)
-	}
-	if v := GetStrFromMap(m, "key2"); v != "" {
-		t.Errorf("expected empty for non-string value, got %s", v)
-	}
-	if v := GetStrFromMap(m, "missing"); v != "" {
-		t.Errorf("expected empty for missing key, got %s", v)
-	}
-	if v := GetStrFromMap(nil, "key"); v != "" {
-		t.Errorf("expected empty for nil map, got %s", v)
-	}
-}
 
 func TestGetRegistryDir(t *testing.T) {
 	dir := GetRegistryDir()

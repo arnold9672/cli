@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseDashboardUpdate = common.Shortcut{
@@ -21,7 +21,7 @@ var BaseDashboardUpdate = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "new dashboard name"},
-		{Name: "theme-style", Desc: "theme style"},
+		{Name: "theme-style", Desc: "theme style, leave empty to keep current theme"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{}

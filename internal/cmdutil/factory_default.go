@@ -9,22 +9,24 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-	"golang.org/x/term"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/internal/util"
-	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	_ "code.byted.org/lark_search/larksuite-cli/internal/security/contentsafety" // register content safety provider
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
+	_ "code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio" // register default FileIO provider
 )
 
 // NewDefault creates a production Factory with cached closures.
@@ -34,27 +36,34 @@ import (
 //	Phase 2: Credential (sole data source for account info)
 //	Phase 3: Config derived from Credential
 //	Phase 4: LarkClient derived from Credential
-func NewDefault(inv InvocationContext) *Factory {
+func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
+	streams = normalizeStreams(streams)
 	f := &Factory{
 		Keychain:   keychain.Default(),
 		Invocation: inv,
+		IOStreams:  streams,
 	}
-	f.IOStreams = &IOStreams{
-		In:         os.Stdin,
-		Out:        os.Stdout,
-		ErrOut:     os.Stderr,
-		IsTerminal: term.IsTerminal(int(os.Stdin.Fd())),
-	}
+
+	// Workspace detection: determines which config subtree to use.
+	// Must run before any config or credential load, since those paths are
+	// workspace-scoped. Default is WorkspaceLocal — existing behavior unchanged.
+	ws := core.DetectWorkspaceFromEnv(os.Getenv)
+	core.SetCurrentWorkspace(ws)
+
+	// Inject workspace-aware dir into keychain's log system.
+	// This breaks the core↔keychain import cycle by using a function variable.
+	keychain.RuntimeDirFunc = core.GetRuntimeDir
 
 	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
 
 	// Phase 1: HttpClient (no credential dependency)
-	f.HttpClient = cachedHttpClientFunc()
+	f.HttpClient = cachedHttpClientFunc(f)
 
 	// Phase 2: Credential (sole data source)
+	// Keychain is read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
-		Keychain:   f.Keychain,
+		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
 		Profile:    inv.Profile,
 		HttpClient: f.HttpClient,
 		ErrOut:     f.IOStreams.ErrOut,
@@ -93,17 +102,27 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func cachedHttpClientFunc() func() (*http.Client, error) {
-	return sync.OnceValues(func() (*http.Client, error) {
-		util.WarnIfProxied(os.Stderr)
+// warnIfProxied is a test seam for the proxy-warning gate. Production wires it
+// to transport.WarnIfProxied; tests swap in a spy to count invocations. It is
+// needed because the real function is guarded by an internal sync.Once, so
+// calling it directly would only fire on the first test (see
+// factory_proxy_warn_test.go). The terminal check is the IOStreams
+// .StderrIsTerminal field, which tests set directly.
+var warnIfProxied = transport.WarnIfProxied
 
-		var transport http.RoundTripper = util.NewBaseTransport()
-		transport = &RetryTransport{Base: transport}
-		transport = &SecurityHeaderTransport{Base: transport}
-		transport = &auth.SecurityPolicyTransport{Base: transport} // Add our global response interceptor
-		transport = wrapWithExtension(transport)
+func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
+	return sync.OnceValues(func() (*http.Client, error) {
+		if f.IOStreams.StderrIsTerminal {
+			warnIfProxied(f.IOStreams.ErrOut)
+		}
+
+		var rt http.RoundTripper = transport.Shared()
+		rt = &RetryTransport{Base: rt}
+		rt = &SecurityHeaderTransport{Base: rt}
+		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
+		rt = wrapWithExtension(rt)
 		client := &http.Client{
-			Transport:     transport,
+			Transport:     rt,
 			Timeout:       30 * time.Second,
 			CheckRedirect: safeRedirectPolicy,
 		}
@@ -122,27 +141,44 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		util.WarnIfProxied(os.Stderr)
-		opts = append(opts, lark.WithHttpClient(&http.Client{
-			Transport:     buildSDKTransport(),
-			CheckRedirect: safeRedirectPolicy,
-		}))
-		ep := core.ResolveEndpoints(acct.Brand)
-		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
+		if f.IOStreams.StderrIsTerminal {
+			warnIfProxied(f.IOStreams.ErrOut)
+		}
+		opts = append(opts, lark.WithHttpClient(newSDKHTTPClient(buildSDKTransport())))
+		opts = append(opts, lark.WithOpenBaseUrl(resolveSDKOpenBaseURL(acct.Brand, os.Getenv)))
 		return lark.NewClient(acct.AppID, credential.RuntimeAppSecret(acct.AppSecret), opts...), nil
 	})
 }
 
+func newSDKHTTPClient(base http.RoundTripper) *http.Client {
+	return &http.Client{
+		Transport:     client.NewSingleAttemptTransport(base),
+		CheckRedirect: safeRedirectPolicy,
+	}
+}
+
+const envOpenBaseURL = "LARKSUITE_CLI_OPEN_BASE_URL"
+
+func resolveSDKOpenBaseURL(brand core.LarkBrand, getenv func(string) string) string {
+	if getenv != nil {
+		if baseURL := strings.TrimRight(strings.TrimSpace(getenv(envOpenBaseURL)), "/"); baseURL != "" {
+			return baseURL
+		}
+	}
+	return core.ResolveEndpoints(brand).Open
+}
+
 func buildSDKTransport() http.RoundTripper {
-	var sdkTransport http.RoundTripper = util.NewBaseTransport()
+	var sdkTransport http.RoundTripper = transport.Shared()
 	sdkTransport = &RetryTransport{Base: sdkTransport}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
+	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}
 	sdkTransport = &auth.SecurityPolicyTransport{Base: sdkTransport}
 	return wrapWithExtension(sdkTransport)
 }
 
 type credentialDeps struct {
-	Keychain   keychain.KeychainAccess
+	Keychain   func() keychain.KeychainAccess
 	Profile    string
 	HttpClient func() (*http.Client, error)
 	ErrOut     io.Writer

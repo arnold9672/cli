@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+//nolint:forbidigo // intermediate draft attachment limit errors; mail command layer wraps into typed ValidationError.
 package draft
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/mail/filecheck"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/filecheck"
 )
 
 // Attachment limits mirrored from the parent mail package so that the draft

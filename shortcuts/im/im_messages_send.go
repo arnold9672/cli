@@ -10,9 +10,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -33,11 +33,11 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
 		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
 		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
-		{Name: "image", Desc: "image_key, local file path"},
-		{Name: "file", Desc: "file_key, local file path"},
-		{Name: "video", Desc: "video file_key, local file path; must be used together with --video-cover"},
-		{Name: "video-cover", Desc: "video cover image_key, local file path; required when using --video"},
-		{Name: "audio", Desc: "audio file_key, local file path"},
+		{Name: "image", Desc: "image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
+		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
+		{Name: "audio", Desc: audioMessageInputDesc},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")
@@ -81,10 +81,14 @@ var ImMessagesSend = common.Shortcut{
 		if desc != "" {
 			d.Desc(desc)
 		}
-		return d.
+		d.
 			POST("/open-apis/im/v1/messages").
 			Params(map[string]interface{}{"receive_id_type": receiveIdType}).
 			Body(body)
+		if chatFlag != "" {
+			d.Desc("NOTE: dry-run validates request shape only. Bot/user membership in the target chat is not verified; the real send may fail with `Bot/User can NOT be out of the chat`.")
+		}
+		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		chatFlag := runtime.Str("chat-id")
@@ -108,31 +112,34 @@ var ImMessagesSend = common.Shortcut{
 				return err
 			}
 		}
+		if err := validateAudioMessageInput("--audio", audioKey); err != nil {
+			return err
+		}
 
-		if err := common.ExactlyOne(runtime, "chat-id", "user-id"); err != nil {
+		if err := common.ExactlyOneTyped(runtime, "chat-id", "user-id"); err != nil {
 			return err
 		}
 
 		// Validate ID formats
 		if chatFlag != "" {
-			if _, err := common.ValidateChatID(chatFlag); err != nil {
+			if _, err := common.ValidateChatIDTyped("--chat-id", chatFlag); err != nil {
 				return err
 			}
 		}
 		if userFlag != "" {
-			if _, err := common.ValidateUserID(userFlag); err != nil {
+			if _, err := common.ValidateUserIDTyped("--user-id", userFlag); err != nil {
 				return err
 			}
 		}
 
 		if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
-			return common.FlagErrorf(msg)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg)
 		}
 		if content != "" && !json.Valid([]byte(content)) {
-			return common.FlagErrorf("--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")
 		}
 		if msg := validateExplicitMsgType(runtime.Cmd, msgType, text, markdown, imageKey, fileKey, videoKey, audioKey); msg != "" {
-			return common.FlagErrorf(msg)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg).WithParam("--msg-type")
 		}
 
 		return nil
@@ -189,7 +196,7 @@ var ImMessagesSend = common.Shortcut{
 			data["uuid"] = idempotencyKey
 		}
 
-		resData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/messages",
+		resData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages",
 			larkcore.QueryParams{"receive_id_type": []string{receiveIdType}}, data)
 		if err != nil {
 			return err
@@ -216,7 +223,7 @@ func validateMediaFlagPath(fio fileio.FileIO, flagName, value string) error {
 		return nil
 	}
 	if _, err := fio.Stat(value); err != nil && !os.IsNotExist(err) {
-		return output.ErrValidation("%s: %v", flagName, err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %v", flagName, err).WithParam(flagName)
 	}
 	return nil
 }

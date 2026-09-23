@@ -7,7 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // dashboardIDFlag returns a Flag for dashboard ID.
@@ -31,9 +31,7 @@ func dryRunDashboardBase(runtime *common.RuntimeContext) *common.DryRunAPI {
 // dryRunDashboardList returns a DryRunAPI for listing dashboards.
 func dryRunDashboardList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -82,9 +80,7 @@ func dryRunDashboardDelete(_ context.Context, runtime *common.RuntimeContext) *c
 // dryRunDashboardBlockList returns a DryRunAPI for listing dashboard blocks.
 func dryRunDashboardBlockList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -102,6 +98,14 @@ func dryRunDashboardBlockGet(_ context.Context, runtime *common.RuntimeContext) 
 	return dryRunDashboardBase(runtime).
 		GET("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id").
 		Params(params)
+}
+
+// dryRunDashboardBlockGetData returns a DryRunAPI for getting computed data for a dashboard block.
+func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	return common.NewDryRunAPI().
+		GET("/open-apis/base/v3/bases/:base_token/dashboards/blocks/:block_id/data").
+		Set("base_token", runtime.Str("base-token")).
+		Set("block_id", runtime.Str("block-id"))
 }
 
 // dryRunDashboardBlockCreate returns a DryRunAPI for creating a dashboard block.
@@ -163,9 +167,7 @@ func dryRunDashboardBlockDelete(_ context.Context, runtime *common.RuntimeContex
 // executeDashboardList lists all dashboards in a base.
 func executeDashboardList(runtime *common.RuntimeContext) error {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -233,9 +235,7 @@ func executeDashboardDelete(runtime *common.RuntimeContext) error {
 // executeDashboardBlockList lists all blocks in a dashboard.
 func executeDashboardBlockList(runtime *common.RuntimeContext) error {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -258,6 +258,16 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 		return err
 	}
 	runtime.Out(map[string]interface{}{"block": data}, nil)
+	return nil
+}
+
+// executeDashboardBlockGetData retrieves computed data for a dashboard chart block.
+func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", "blocks", runtime.Str("block-id"), "data"), nil, nil)
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
 	return nil
 }
 

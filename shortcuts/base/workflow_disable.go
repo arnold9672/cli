@@ -7,7 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseWorkflowDisable = common.Shortcut{
@@ -21,12 +21,16 @@ var BaseWorkflowDisable = common.Shortcut{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
 	},
+	Tips: []string{
+		"workflow-id must start with wkf; do not pass a tbl table ID from the same URL.",
+		"Disable only changes workflow state; it does not delete the workflow or its steps.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("workflow-id")) == "" {
-			return common.FlagErrorf("--workflow-id must not be blank")
+			return baseFlagErrorf("--workflow-id must not be blank")
 		}
 		return nil
 	},

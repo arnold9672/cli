@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 // botInfoTestConfig returns a CliConfig suitable for bot info tests.
@@ -57,7 +57,7 @@ func TestFetchBotInfo_Success(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot_abc123",
 				"app_name": "TestBot",
 			},
@@ -86,7 +86,7 @@ func TestFetchBotInfo_ShortcutHeaders(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot_header",
 				"app_name": "HeaderBot",
 			},
@@ -119,7 +119,7 @@ func TestFetchBotInfo_OnceSemantics(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "ou_bot_once",
 				"app_name": "OnceBot",
 			},
@@ -171,6 +171,7 @@ func TestFetchBotInfo_APICodeNonZero(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-zero code")
 	}
+	// fetchBotInfo returns a raw fmt.Errorf, not a typed envelope — message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "[99991]") {
 		t.Errorf("error = %q, want substring [99991]", err.Error())
 	}
@@ -183,7 +184,7 @@ func TestFetchBotInfo_EmptyOpenID(t *testing.T) {
 		URL:    "/open-apis/bot/v3/info",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
+			"bot": map[string]interface{}{
 				"open_id":  "",
 				"app_name": "EmptyBot",
 			},
@@ -197,6 +198,7 @@ func TestFetchBotInfo_EmptyOpenID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty open_id")
 	}
+	// fetchBotInfo returns a raw fmt.Errorf, not a typed envelope — message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "open_id is empty") {
 		t.Errorf("error = %q, want substring 'open_id is empty'", err.Error())
 	}
@@ -218,6 +220,7 @@ func TestFetchBotInfo_HTTP4xx(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for HTTP 403")
 	}
+	// fetchBotInfo returns a raw fmt.Errorf, not a typed envelope — message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("error = %q, want substring '403'", err.Error())
 	}
@@ -238,7 +241,7 @@ func TestFetchBotInfo_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	// Error may come from SDK-level parse or our unmarshal wrapper
+	// Error may come from SDK-level parse or our unmarshal wrapper — both are raw fmt.Errorf, not a typed envelope.
 	if !strings.Contains(err.Error(), "unmarshal") && !strings.Contains(err.Error(), "invalid character") {
 		t.Errorf("error = %q, want JSON parse failure", err.Error())
 	}
@@ -279,6 +282,7 @@ func TestFetchBotInfo_CanBotFalse(t *testing.T) {
 	if info != nil {
 		t.Errorf("expected nil info, got %+v", info)
 	}
+	// fetchBotInfo returns a raw fmt.Errorf, not a typed envelope — message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "not available") {
 		t.Errorf("error = %q, want substring 'not available'", err.Error())
 	}
@@ -291,6 +295,7 @@ func TestBotInfo_NilFunc(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil botInfoFunc")
 	}
+	// BotInfo() returns a raw fmt.Errorf when botInfoFunc is nil, not a typed envelope — message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "not fully initialized") {
 		t.Errorf("unexpected error: %v", err)
 	}

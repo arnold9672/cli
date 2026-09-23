@@ -4,60 +4,30 @@
 package output
 
 import (
-	"strings"
 	"testing"
 )
 
-// TestClassifyLarkError_DriveCreateShortcutConstraints verifies known Drive shortcut errors map to actionable hints.
-func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
+func TestMailSendErrorConstantsUseServiceScopedCodes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		code         int
-		wantExitCode int
-		wantType     string
-		wantHint     string
+		name string
+		got  int
+		want int
 	}{
-		{
-			name:         "resource contention",
-			code:         LarkErrDriveResourceContention,
-			wantExitCode: ExitAPI,
-			wantType:     "conflict",
-			wantHint:     "avoid concurrent duplicate requests",
-		},
-		{
-			name:         "cross tenant unit",
-			code:         LarkErrDriveCrossTenantUnit,
-			wantExitCode: ExitAPI,
-			wantType:     "cross_tenant_unit",
-			wantHint:     "same tenant and region/unit",
-		},
-		{
-			name:         "cross brand",
-			code:         LarkErrDriveCrossBrand,
-			wantExitCode: ExitAPI,
-			wantType:     "cross_brand",
-			wantHint:     "same brand environment",
-		},
+		{name: "mailbox not found", got: LarkErrMailboxNotFound, want: 1234013},
+		{name: "user daily send quota", got: LarkErrMailSendQuotaUser, want: 1236007},
+		{name: "user external recipient quota", got: LarkErrMailSendQuotaUserExt, want: 1236008},
+		{name: "tenant external recipient quota", got: LarkErrMailSendQuotaTenantExt, want: 1236009},
+		{name: "mail quota", got: LarkErrMailQuota, want: 1236010},
+		{name: "tenant storage limit", got: LarkErrTenantStorageLimit, want: 1236013},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotExitCode, gotType, gotHint := ClassifyLarkError(tt.code, "raw msg")
-			if gotExitCode != tt.wantExitCode {
-				t.Fatalf("exitCode=%d, want %d", gotExitCode, tt.wantExitCode)
-			}
-			if gotType != tt.wantType {
-				t.Fatalf("type=%q, want %q", gotType, tt.wantType)
-			}
-			if gotHint == "" {
-				t.Fatal("expected non-empty hint")
-			}
-			if !strings.Contains(gotHint, tt.wantHint) {
-				t.Fatalf("hint=%q, want substring %q", gotHint, tt.wantHint)
+			if tt.got != tt.want {
+				t.Fatalf("code=%d, want %d", tt.got, tt.want)
 			}
 		})
 	}

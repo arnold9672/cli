@@ -6,10 +6,11 @@ package config
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +33,7 @@ func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) erro
 			return configRemoveRun(opts)
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }
@@ -41,14 +43,14 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 
 	config, err := core.LoadMultiAppConfig()
 	if err != nil || config == nil || len(config.Apps) == 0 {
-		return output.ErrValidation("not configured yet")
+		return errs.NewConfigError(errs.SubtypeNotConfigured, "not configured yet")
 	}
 
 	// Save empty config first. If this fails, keep secrets and tokens intact so the
 	// existing config can still be retried instead of ending up half-removed.
 	empty := &core.MultiAppConfig{Apps: []core.AppConfig{}}
 	if err := core.SaveMultiAppConfig(empty); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	// Clean up keychain entries for all apps after config is cleared.

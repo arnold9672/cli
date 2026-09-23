@@ -3,7 +3,7 @@
 
 package mail
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // Shortcuts returns all mail shortcuts.
 func Shortcuts() []common.Shortcut {
@@ -17,8 +17,15 @@ func Shortcuts() []common.Shortcut {
 		MailReplyAll,
 		MailSend,
 		MailDraftCreate,
+		MailDraftSend,
 		MailDraftEdit,
 		MailForward,
+		MailSendReceipt,
+		MailDeclineReceipt,
 		MailSignature,
+		MailShareToChat,
+		MailTemplateCreate,
+		MailTemplateUpdate,
+		MailLintHTML,
 	}
 }

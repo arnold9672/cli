@@ -3,7 +3,7 @@
 
 package common
 
-import "github.com/larksuite/cli/internal/util"
+import "code.byted.org/lark_search/larksuite-cli/internal/util"
 
 // GetString safely extracts a string from a nested map path.
 // Usage: GetString(data, "user", "name") is equivalent to
@@ -31,6 +31,26 @@ func GetFloat(m map[string]interface{}, keys ...string) float64 {
 	}
 	f, _ := util.ToFloat64(v[keys[len(keys)-1]])
 	return f
+}
+
+// GetInt safely extracts an int, accepting both in-memory ints and JSON-style float64 values.
+func GetInt(m map[string]interface{}, keys ...string) int {
+	if len(keys) == 0 {
+		return 0
+	}
+	v := navigate(m, keys[:len(keys)-1])
+	if v == nil {
+		return 0
+	}
+	switch n := v[keys[len(keys)-1]].(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	}
+	return 0
 }
 
 // GetBool safely extracts a bool.

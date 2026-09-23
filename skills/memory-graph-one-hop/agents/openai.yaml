@@ -1,0 +1,7 @@
+interface:
+  display_name: "memory-graph-one-hop"
+  short_description: "Expand one hop from reliable Memory Graph roots"
+  default_prompt: "Use $memory-graph-one-hop to expand one hop from this NodeType and RootID."
+
+policy:
+  allow_implicit_invocation: true

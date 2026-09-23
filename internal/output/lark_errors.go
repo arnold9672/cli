@@ -5,6 +5,11 @@ package output
 
 // Lark API generic error code constants.
 // ref: https://open.feishu.cn/document/server-docs/api-call-guide/generic-error-code
+//
+// Kept as exported identifiers because external shortcut packages reference
+// them by name (e.g. LarkErrOwnershipMismatch). The canonical Category /
+// Subtype / Retryable metadata for each code lives in internal/errclass and
+// must remain the single source of truth.
 const (
 	// Auth: token missing / invalid / expired.
 	LarkErrTokenMissing = 99991661 // Authorization header missing or empty
@@ -20,9 +25,17 @@ const (
 	LarkErrUserNotAuthorized     = 230027   // user not authorized
 
 	// App credential / status.
-	LarkErrAppCredInvalid  = 99991543 // app_id or app_secret is incorrect
-	LarkErrAppNotInUse     = 99991662 // app is disabled or not installed in this tenant
+	LarkErrAppCredInvalid  = 99991543 // app_id or app_secret is incorrect (Open API)
+	LarkErrAppNotInUse     = 99991662 // app is disabled in this tenant
 	LarkErrAppUnauthorized = 99991673 // app status unavailable; check installation
+
+	// "Wrong app credentials" code from the LEGACY TAT endpoint
+	// (/open-apis/auth/v3/tenant_access_token/internal returns 10014, "app secret
+	// invalid", instead of 99991543). Since the OAuth v3 migration the CLI mints
+	// TAT via accounts/oauth/v3/token and reports this as the OAuth invalid_client
+	// error, so it no longer emits 10014 itself; the constant + codemeta mapping
+	// are retained as a defensive fallback should 10014 still arrive.
+	LarkErrTATInvalidSecret = 10014
 
 	// Rate limit.
 	LarkErrRateLimit = 99991400 // request frequency limit exceeded
@@ -32,48 +45,41 @@ const (
 	LarkErrRefreshExpired     = 20037 // refresh_token expired
 	LarkErrRefreshRevoked     = 20064 // refresh_token revoked
 	LarkErrRefreshAlreadyUsed = 20073 // refresh_token already consumed (single-use rotation)
-	LarkErrRefreshServerError = 20050 // refresh endpoint server-side error, retryable
 
 	// Drive shortcut / cross-space constraints.
 	LarkErrDriveResourceContention = 1061045 // resource contention occurred, please retry
 	LarkErrDriveCrossTenantUnit    = 1064510 // cross tenant and unit not support
 	LarkErrDriveCrossBrand         = 1064511 // cross brand not support
+
+	// Wiki write-path lock contention (e.g. concurrent wiki +node-create under the
+	// same parent). Server-side write lock; transient, safe to retry with backoff.
+	LarkErrWikiLockContention = 131009
+
+	// Sheets float image: width/height/offset out of range or invalid.
+	LarkErrSheetsFloatImageInvalidDims = 1310246
+
+	// Drive permission apply: per-user-per-document submission limit (5/day) reached.
+	LarkErrDrivePermApplyRateLimit = 1063006
+	// Drive permission apply: request is not applicable for this document
+	// (e.g. the document is configured to disallow access requests, or the
+	// caller already holds the requested permission, or the target type does
+	// not accept apply operations).
+	LarkErrDrivePermApplyNotApplicable = 1063007
+
+	// IM resource ownership mismatch.
+	LarkErrOwnershipMismatch = 231205
+
+	// Mail send: account / mailbox-level failures returned by
+	// POST /open-apis/mail/v1/user_mailboxes/:user_mailbox_id/drafts/:draft_id/send.
+	// Mail v1 uses service-scoped 123xxxx codes; keep the full upstream code
+	// because the typed envelope preserves Problem.Code exactly as returned by
+	// the server.
+	// These codes indicate the entire batch will keep failing identically and
+	// are consumed by shortcuts/mail.isFatalSendErr to abort early.
+	LarkErrMailboxNotFound        = 1234013 // mailbox not found or not active
+	LarkErrMailSendQuotaUser      = 1236007 // user daily send count exceeded
+	LarkErrMailSendQuotaUserExt   = 1236008 // user daily external recipient count exceeded
+	LarkErrMailSendQuotaTenantExt = 1236009 // tenant daily external recipient count exceeded
+	LarkErrMailQuota              = 1236010 // mail quota limit
+	LarkErrTenantStorageLimit     = 1236013 // tenant storage limit exceeded
 )
-
-// ClassifyLarkError maps a Lark API error code + message to (exitCode, errType, hint).
-// errType provides fine-grained classification in the JSON envelope;
-// exitCode is kept coarse (ExitAuth or ExitAPI).
-func ClassifyLarkError(code int, msg string) (int, string, string) {
-	switch code {
-	// auth: token missing / invalid / expired
-	case LarkErrTokenMissing, LarkErrTokenBadFmt:
-		return ExitAuth, "auth", "run: lark-cli auth login to re-authorize"
-	case LarkErrTokenInvalid, LarkErrATInvalid, LarkErrTokenExpired:
-		return ExitAuth, "auth", "run: lark-cli auth login to re-authorize"
-
-	// permission: scope not granted
-	case LarkErrAppScopeNotEnabled, LarkErrTokenNoPermission,
-		LarkErrUserScopeInsufficient, LarkErrUserNotAuthorized:
-		return ExitAPI, "permission", "check app permissions or re-authorize: lark-cli auth login"
-
-	// app credential / status
-	case LarkErrAppCredInvalid:
-		return ExitAuth, "config", "check app_id / app_secret: lark-cli config set"
-	case LarkErrAppNotInUse, LarkErrAppUnauthorized:
-		return ExitAuth, "app_status", "app is disabled or not installed — check developer console"
-
-	// rate limit
-	case LarkErrRateLimit:
-		return ExitAPI, "rate_limit", "please try again later"
-
-	// drive-specific constraints that benefit from actionable hints
-	case LarkErrDriveResourceContention:
-		return ExitAPI, "conflict", "please retry later and avoid concurrent duplicate requests"
-	case LarkErrDriveCrossTenantUnit:
-		return ExitAPI, "cross_tenant_unit", "operate on source and target within the same tenant and region/unit"
-	case LarkErrDriveCrossBrand:
-		return ExitAPI, "cross_brand", "operate on source and target within the same brand environment"
-	}
-
-	return ExitAPI, "api_error", ""
-}

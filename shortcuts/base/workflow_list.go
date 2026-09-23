@@ -7,7 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseWorkflowList = common.Shortcut{
@@ -20,13 +20,18 @@ var BaseWorkflowList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "status", Desc: "filter by status", Enum: []string{"enabled", "disabled"}},
-		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request (max 100)"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, range 1-100"},
+	},
+	Tips: []string{
+		"Returns workflow_id values with wkf prefix; pass those IDs to +workflow-get/enable/disable/update.",
+		"This shortcut auto-paginates and returns all matched workflows.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
-		return nil
+		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 100)
+		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{

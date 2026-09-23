@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 type mockExtProvider struct {
@@ -420,5 +420,74 @@ func TestCredentialProvider_ResolveTokenDoesNotBypassFailedDefaultAccountResolut
 	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
 	if err == nil || err.Error() != "config unavailable" {
 		t.Fatalf("ResolveToken() error = %v, want config unavailable", err)
+	}
+}
+
+func TestActiveExtensionProviderName_ExtActive(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{name: "env", account: &extcred.Account{AppID: "app"}}},
+		nil, nil, nil,
+	)
+	name, err := cp.ActiveExtensionProviderName(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "env" {
+		t.Errorf("got %q, want %q", name, "env")
+	}
+}
+
+func TestActiveExtensionProviderName_BlockError(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name:       "env",
+			accountErr: &extcred.BlockError{Provider: "env", Reason: "APP_ID missing"},
+		}},
+		nil, nil, nil,
+	)
+	name, err := cp.ActiveExtensionProviderName(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "env" {
+		t.Errorf("got %q, want %q", name, "env")
+	}
+}
+
+func TestActiveExtensionProviderName_NoExtProvider(t *testing.T) {
+	cp := NewCredentialProvider(nil, nil, nil, nil)
+	name, err := cp.ActiveExtensionProviderName(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "" {
+		t.Errorf("got %q, want empty string", name)
+	}
+}
+
+func TestActiveExtensionProviderName_UnexpectedError(t *testing.T) {
+	sentinel := errors.New("network timeout")
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{name: "env", accountErr: sentinel}},
+		nil, nil, nil,
+	)
+	_, err := cp.ActiveExtensionProviderName(context.Background())
+	if !errors.Is(err, sentinel) {
+		t.Errorf("got %v, want sentinel error", err)
+	}
+}
+
+func TestActiveExtensionProviderName_SkipsNilProvider(t *testing.T) {
+	// nil account + nil error = provider not applicable; fallback returns ""
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{name: "sidecar"}}, // no account set → returns nil, nil
+		nil, nil, nil,
+	)
+	name, err := cp.ActiveExtensionProviderName(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "" {
+		t.Errorf("got %q, want empty string", name)
 	}
 }

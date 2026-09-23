@@ -9,19 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/util"
 )
-
-// RequireConfirmation blocks high-risk-write operations unless --yes is passed.
-func RequireConfirmation(risk string, yes bool, action string) error {
-	if risk != "high-risk-write" || yes {
-		return nil
-	}
-	return output.ErrWithHint(output.ExitValidation, "unsafe_operation_blocked",
-		fmt.Sprintf("high-risk operation requires confirmation: %s", action),
-		"add --yes to confirm")
-}
 
 func FormatSize(bytes int64) string {
 	if bytes < 1024 {
@@ -171,23 +161,6 @@ func CheckApiError(w io.Writer, result interface{}, action string) bool {
 		}
 	}
 	return false
-}
-
-// HandleApiResult checks for network/API errors and returns the "data" field.
-func HandleApiResult(result interface{}, err error, action string) (map[string]interface{}, error) {
-	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "%s: %s", action, err)
-	}
-	resultMap, _ := result.(map[string]interface{})
-	code, _ := util.ToFloat64(resultMap["code"])
-	if code != 0 {
-		msg, _ := resultMap["msg"].(string)
-		larkCode := int(code)
-		fullMsg := fmt.Sprintf("%s: [%d] %s", action, larkCode, msg)
-		return nil, output.ErrAPI(larkCode, fullMsg, resultMap["error"])
-	}
-	data, _ := resultMap["data"].(map[string]interface{})
-	return data, nil
 }
 
 // TruncateStr truncates s to at most n runes.

@@ -9,10 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // profileListItem is the JSON output for a single profile entry.
@@ -34,6 +35,7 @@ func NewCmdProfileList(f *cmdutil.Factory) *cobra.Command {
 			return profileListRun(f)
 		},
 	}
+	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
 
@@ -44,7 +46,7 @@ func profileListRun(f *cmdutil.Factory) error {
 			output.PrintJson(f.IOStreams.Out, []profileListItem{})
 			return nil
 		}
-		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "failed to load config: %v", err).WithCause(err)
 	}
 	if multi == nil || len(multi.Apps) == 0 {
 		output.PrintJson(f.IOStreams.Out, []profileListItem{})

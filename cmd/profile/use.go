@@ -9,9 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // NewCmdProfileUse creates the profile use subcommand.
@@ -27,26 +28,28 @@ func NewCmdProfileUse(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetTips(cmd, []string{
 		"AI agents: Do NOT switch profiles unless the user explicitly asks.",
 	})
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 
 func profileUseRun(f *cmdutil.Factory, name string) error {
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := core.LoadOrNotConfigured()
 	if err != nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return err
 	}
 
 	// Handle "-" for toggle-back
 	if name == "-" {
 		if multi.PreviousApp == "" {
-			return output.ErrValidation("no previous profile to switch back to")
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "no previous profile to switch back to").
+				WithHint("switch to a profile by name first: lark-cli profile use <name>")
 		}
 		name = multi.PreviousApp
 	}
 
 	app := multi.FindApp(name)
 	if app == nil {
-		return output.ErrValidation("profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
 	}
 
 	targetName := app.ProfileName()
@@ -65,7 +68,7 @@ func profileUseRun(f *cmdutil.Factory, name string) error {
 	multi.CurrentApp = targetName
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Switched to profile %q (%s, %s)", targetName, app.AppId, app.Brand))

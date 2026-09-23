@@ -11,8 +11,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseRoleGet = common.Shortcut{
@@ -27,12 +27,16 @@ var BaseRoleGet = common.Shortcut{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "role-id", Desc: "role ID (e.g. rolxxxxxx4)", Required: true},
 	},
+	Tips: []string{
+		"Requires advanced permissions to be enabled and the caller to be a Base admin.",
+		"Use before +role-update to inspect the current full permission config.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("role-id")) == "" {
-			return common.FlagErrorf("--role-id must not be blank")
+			return baseFlagErrorf("--role-id must not be blank")
 		}
 		return nil
 	},
@@ -54,6 +58,6 @@ var BaseRoleGet = common.Shortcut{
 			return err
 		}
 
-		return handleRoleResponse(runtime, apiResp.RawBody, "get role failed")
+		return handleRoleAPIResponse(runtime, apiResp, "get role failed")
 	},
 }

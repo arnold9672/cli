@@ -17,9 +17,11 @@ import (
 	"sync"
 	"time"
 
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 	"github.com/gofrs/flock"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
@@ -69,7 +71,7 @@ var refreshLocks sync.Map
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if stored == nil {
-		return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+		return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 	}
 
 	status := TokenStatus(stored)
@@ -84,7 +86,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 			return "", err
 		}
 		if refreshed == nil {
-			return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+			return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 		}
 		return refreshed.AccessToken, nil
 	}
@@ -97,7 +99,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 			fmt.Fprintf(os.Stderr, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
 		}
 	}
-	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+	return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 }
 
 // refreshWithLock acquires a file lock before attempting to refresh the token.
@@ -212,7 +214,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		}
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
-			return nil, fmt.Errorf("token refresh parse error: %v", err)
+			return nil, fmt.Errorf("token refresh parse error: %w", err)
 		}
 		return data, nil
 	}
@@ -223,16 +225,21 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	}
 
 	code := getInt(data, "code", -1)
-	if code == LarkErrBlockByPolicy || code == LarkErrBlockByPolicyTryAuth {
+	meta, metaOK := errclass.LookupCodeMeta(code)
+	if metaOK && meta.Category == errs.CategoryPolicy {
 		challengeUrl := getStr(data, "challenge_url")
 		cliHint := getStr(data, "cli_hint")
 		msg := getStr(data, "error_description")
 
-		return nil, &SecurityPolicyError{
-			Code:         code,
-			Message:      msg,
+		return nil, &errs.SecurityPolicyError{
+			Problem: errs.Problem{
+				Category: errs.CategoryPolicy,
+				Subtype:  meta.Subtype,
+				Code:     code,
+				Message:  msg,
+				Hint:     cliHint,
+			},
 			ChallengeURL: challengeUrl,
-			CLIHint:      cliHint,
 		}
 	}
 
@@ -240,7 +247,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 
 	if (code != -1 && code != 0) || errStr != "" {
 		// Retryable server error: retry once, then clear token on second failure.
-		if RefreshTokenRetryable[code] {
+		if metaOK && meta.Category == errs.CategoryAuthentication && meta.Retryable {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh transient error (code=%d) for %s, retrying once\n", code, opts.UserOpenId)
 			data, err = callEndpoint()
 			if err != nil {

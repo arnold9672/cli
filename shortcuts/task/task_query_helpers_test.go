@@ -4,8 +4,12 @@
 package task
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func TestSplitAndTrimCSV(t *testing.T) {
@@ -85,6 +89,7 @@ func TestParseTimeRangeMillisAndRequireSearchFilter(t *testing.T) {
 	}{
 		{name: "empty input", input: "", wantStart: "", wantEnd: ""},
 		{name: "invalid input", input: "bad-time", wantErr: true},
+		{name: "invalid end input", input: "-1d,bad-time", wantErr: true},
 		{name: "range input", input: "-1d,+1d", wantStart: "non-empty", wantEnd: "non-empty"},
 		{name: "reversed range fails fast", input: "+1d,-1d", wantErr: true},
 	}
@@ -94,6 +99,19 @@ func TestParseTimeRangeMillisAndRequireSearchFilter(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("parseTimeRangeMillis(%q) expected error, got nil", tt.input)
+				}
+				if tt.name == "reversed range fails fast" {
+					var ve *errs.ValidationError
+					if !errors.As(err, &ve) {
+						t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
+					}
+					p, ok := errs.ProblemOf(err)
+					if !ok || p.Subtype != errs.SubtypeInvalidArgument {
+						t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+					}
+					if got := output.ExitCodeOf(err); got != output.ExitValidation {
+						t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+					}
 				}
 				return
 			}
@@ -249,6 +267,7 @@ func TestRenderRelatedTasksPretty(t *testing.T) {
 			}{
 				{name: "empty input", input: "", wantStart: "", wantEnd: ""},
 				{name: "invalid input", input: "bad-time", wantErr: true},
+				{name: "invalid end input", input: "-1d,bad-time", wantErr: true},
 				{name: "range input", input: "-1d,+1d", wantStart: "rfc3339", wantEnd: "rfc3339"},
 				{name: "reversed range fails fast", input: "+1d,-1d", wantErr: true},
 			}
@@ -259,6 +278,19 @@ func TestRenderRelatedTasksPretty(t *testing.T) {
 					if tt.wantErr {
 						if err == nil {
 							t.Fatal("expected error, got nil")
+						}
+						if tt.name == "reversed range fails fast" {
+							var ve *errs.ValidationError
+							if !errors.As(err, &ve) {
+								t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
+							}
+							p, ok := errs.ProblemOf(err)
+							if !ok || p.Subtype != errs.SubtypeInvalidArgument {
+								t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+							}
+							if got := output.ExitCodeOf(err); got != output.ExitValidation {
+								t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+							}
 						}
 						return
 					}

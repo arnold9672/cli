@@ -3,7 +3,7 @@
 
 package validate
 
-import "github.com/larksuite/cli/internal/vfs/localfileio"
+import "code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 
 // SafeOutputPath validates a download/export target path.
 // Delegates to localfileio.SafeOutputPath.

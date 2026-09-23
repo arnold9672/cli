@@ -4,10 +4,16 @@
 package convertlib
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
+	"net/url"
+	"reflect"
+	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ContentConverter defines the interface for converting a message type's raw content to human-readable text.
@@ -19,6 +25,9 @@ type ContentConverter interface {
 type ConvertContext struct {
 	RawContent string
 	MentionMap map[string]string
+	// Mentions is the raw mentions array from the API response.
+	// Used by interactive card converter to resolve @user references via mention_key.
+	Mentions []interface{}
 	// MessageID and Runtime are used by merge_forward to fetch and expand sub-messages via API.
 	// For other message types these can be zero values.
 	MessageID string
@@ -26,6 +35,14 @@ type ConvertContext struct {
 	// SenderNames is a shared cache of open_id -> display name, accumulated across messages
 	// to avoid redundant contact API calls. May be nil.
 	SenderNames map[string]string
+	// MergeForwardSubItems is an optional pre-fetched cache of merge_forward
+	// sub-message lists, keyed by merge_forward message_id. When set, the
+	// merge_forward converter uses the cached entry instead of issuing its
+	// own GET; populated by callers via PrefetchMergeForwardSubItems before
+	// the FormatMessageItem loop. nil means "no prefetch — fall back to the
+	// per-message inline GET", which keeps non-shortcut callers (events,
+	// ad-hoc tests) working unchanged.
+	MergeForwardSubItems map[string][]map[string]interface{}
 }
 
 // converters maps message types to their ContentConverter implementations.
@@ -79,6 +96,7 @@ func FormatEventMessage(msgType, rawContent, messageID string, mentions []interf
 	content := ConvertBodyContent(msgType, &ConvertContext{
 		RawContent: rawContent,
 		MentionMap: BuildMentionKeyMap(mentions),
+		Mentions:   mentions,
 		MessageID:  messageID,
 	})
 
@@ -113,6 +131,30 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	if len(senderNames) > 0 {
 		nameCache = senderNames[0]
 	}
+	return formatMessageItem(m, runtime, nameCache, nil, false)
+}
+
+// FormatMessageItemWithMergePrefetch is like FormatMessageItem but threads a
+// pre-fetched merge_forward sub-message map (typically built via
+// PrefetchMergeForwardSubItems) through to the merge_forward converter so it
+// can skip its own per-message GET. Shortcuts that iterate a page of raw
+// items should pre-fetch once and call this variant in the loop to avoid the
+// N × ~1s serial-merge_forward stall in the original code path.
+func FormatMessageItemWithMergePrefetch(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}) map[string]interface{} {
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, false)
+}
+
+// FormatMessageItemWithMergePrefetchOpts is FormatMessageItemWithMergePrefetch
+// with an explicit extractResources gate. When extractResources is true and
+// the message carries downloadable resources, a "resources" block (ref list
+// without local_path/size_bytes) is attached for the download enrichment stage
+// to fill. The other entry points are thin extractResources=false wrappers, so
+// default output is unchanged.
+func FormatMessageItemWithMergePrefetchOpts(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, extractResources)
+}
+
+func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
 	msgType, _ := m["msg_type"].(string)
 	messageId, _ := m["message_id"].(string)
 	mentions, _ := m["mentions"].([]interface{})
@@ -120,14 +162,17 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	updated, _ := m["updated"].(bool)
 
 	content := ""
+	rawContent := ""
 	if body, ok := m["body"].(map[string]interface{}); ok {
-		rawContent, _ := body["content"].(string)
+		rawContent, _ = body["content"].(string)
 		content = ConvertBodyContent(msgType, &ConvertContext{
-			RawContent:  rawContent,
-			MentionMap:  BuildMentionKeyMap(mentions),
-			MessageID:   messageId,
-			Runtime:     runtime,
-			SenderNames: nameCache,
+			RawContent:           rawContent,
+			MentionMap:           BuildMentionKeyMap(mentions),
+			Mentions:             mentions,
+			MessageID:            messageId,
+			Runtime:              runtime,
+			SenderNames:          nameCache,
+			MergeForwardSubItems: mergePrefetch,
 		})
 	}
 
@@ -148,6 +193,41 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 		msg["reply_to"] = pid
 	}
 
+	// Preserve API-provided fields (even if this formatter doesn't otherwise use them).
+	// update_time is only meaningful when the message was actually edited;
+	// the server echoes update_time == create_time for unedited messages, which
+	// would otherwise make every output look "updated" to downstream consumers.
+	if updated {
+		if v, ok := m["update_time"]; ok && v != nil {
+			if s, isStr := v.(string); isStr {
+				if strings.TrimSpace(s) != "" {
+					msg["update_time"] = common.FormatTime(s)
+				}
+			} else {
+				msg["update_time"] = common.FormatTime(v)
+			}
+		}
+	}
+	if v, ok := m["chat_id"]; ok {
+		msg["chat_id"] = v
+	}
+	if v, ok := m["message_position"]; ok {
+		msg["message_position"] = v
+	}
+	if v, ok := m["thread_message_position"]; ok {
+		msg["thread_message_position"] = v
+	}
+
+	// Prefer API-provided message_app_link when it's a non-empty string; otherwise assemble deterministically.
+	appLink, _ := m["message_app_link"].(string)
+	appLink = strings.TrimSpace(appLink)
+	if appLink == "" && runtime != nil && runtime.Config != nil {
+		appLink = assembleMessageAppLink(m, runtime.Config.Brand)
+	}
+	if appLink != "" {
+		msg["message_app_link"] = appLink
+	}
+
 	if len(mentions) > 0 {
 		simplified := make([]map[string]interface{}, 0, len(mentions))
 		for _, raw := range mentions {
@@ -163,7 +243,165 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 		msg["mentions"] = simplified
 	}
 
+	if extractResources {
+		if refs := ExtractResourceRefs(msgType, rawContent, messageId, mergePrefetch); len(refs) > 0 {
+			resources := make([]map[string]interface{}, 0, len(refs))
+			for _, r := range refs {
+				resources = append(resources, map[string]interface{}{
+					"message_id": r.MessageID,
+					"key":        r.Key,
+					"type":       r.Type,
+				})
+			}
+			msg["resources"] = resources
+		}
+	}
+
 	return msg
+}
+
+func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) string {
+	domain := resolveAppLinkDomain(brand)
+	if domain == "" {
+		return ""
+	}
+
+	chatID, _ := m["chat_id"].(string)
+	threadID, _ := m["thread_id"].(string)
+	msgPos, okMsgPos := normalizeMessagePosition(m["message_position"])
+	threadPos, okThreadPos := normalizeMessagePosition(m["thread_message_position"])
+
+	// Thread app link requires both thread_id and chat_id.
+	// Emit both underscore-less (openthreadid/openchatid) and snake_case (open_thread_id/open_chat_id)
+	// query keys so PC and mobile clients can both resolve the link.
+	if threadID != "" && chatID != "" && okThreadPos {
+		u := &url.URL{Scheme: "https", Host: domain, Path: "/client/thread/open"}
+		q := url.Values{}
+		q.Set("openthreadid", threadID)
+		q.Set("openchatid", chatID)
+		q.Set("open_thread_id", threadID)
+		q.Set("open_chat_id", chatID)
+		q.Set("thread_position", threadPos)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+	if chatID != "" && okMsgPos {
+		u := &url.URL{Scheme: "https", Host: domain, Path: "/client/chat/open"}
+		q := url.Values{}
+		q.Set("openChatId", chatID)
+		q.Set("position", msgPos)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+	return ""
+}
+
+func normalizeMessagePosition(v interface{}) (string, bool) {
+	if v == nil {
+		return "", false
+	}
+	switch vv := v.(type) {
+	case float32:
+		f := float64(vv)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", false
+		}
+		if math.Trunc(f) == f {
+			return strconv.FormatInt(int64(f), 10), true
+		}
+		return strconv.FormatFloat(f, 'f', -1, 64), true
+	case float64:
+		if math.IsNaN(vv) || math.IsInf(vv, 0) {
+			return "", false
+		}
+		if math.Trunc(vv) == vv {
+			return strconv.FormatInt(int64(vv), 10), true
+		}
+		return strconv.FormatFloat(vv, 'f', -1, 64), true
+	case int:
+		return strconv.Itoa(vv), true
+	case int8:
+		return strconv.FormatInt(int64(vv), 10), true
+	case int16:
+		return strconv.FormatInt(int64(vv), 10), true
+	case int32:
+		return strconv.FormatInt(int64(vv), 10), true
+	case int64:
+		return strconv.FormatInt(vv, 10), true
+	case uint:
+		return strconv.FormatUint(uint64(vv), 10), true
+	case uint8:
+		return strconv.FormatUint(uint64(vv), 10), true
+	case uint16:
+		return strconv.FormatUint(uint64(vv), 10), true
+	case uint32:
+		return strconv.FormatUint(uint64(vv), 10), true
+	case uint64:
+		return strconv.FormatUint(vv, 10), true
+	case uintptr:
+		return strconv.FormatUint(uint64(vv), 10), true
+	case json.Number:
+		s := strings.TrimSpace(vv.String())
+		if s == "" {
+			return "", false
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", false
+		}
+		if math.Trunc(f) == f {
+			return strconv.FormatInt(int64(f), 10), true
+		}
+		return strconv.FormatFloat(f, 'f', -1, 64), true
+	case string:
+		s := strings.TrimSpace(vv)
+		if s == "" {
+			return "", false
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", false
+		}
+		if math.Trunc(f) == f {
+			return strconv.FormatInt(int64(f), 10), true
+		}
+		return strconv.FormatFloat(f, 'f', -1, 64), true
+	default:
+		// Fallback for typed numeric values (e.g. int32/uint64 via struct -> interface{}), pointers, etc.
+		rv := reflect.ValueOf(v)
+		for rv.Kind() == reflect.Ptr {
+			if rv.IsNil() {
+				return "", false
+			}
+			rv = rv.Elem()
+		}
+		switch rv.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return strconv.FormatInt(rv.Int(), 10), true
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			return strconv.FormatUint(rv.Uint(), 10), true
+		case reflect.Float32, reflect.Float64:
+			f := rv.Float()
+			if math.IsNaN(f) || math.IsInf(f, 0) {
+				return "", false
+			}
+			if math.Trunc(f) == f {
+				return strconv.FormatInt(int64(f), 10), true
+			}
+			return strconv.FormatFloat(f, 'f', -1, 64), true
+		default:
+			return "", false
+		}
+	}
+}
+
+func resolveAppLinkDomain(brand core.LarkBrand) string {
+	appLink := core.ResolveEndpoints(brand).AppLink
+	u, err := url.Parse(appLink)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 // extractMentionOpenId extracts open_id from mention id (string or {"open_id":...} object).

@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/util"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs"
 )
 
 const (
@@ -37,9 +37,12 @@ type UpdateInfo struct {
 	Latest  string `json:"latest"`
 }
 
-// Message returns a concise update notification.
+// Message returns a concise update notification including the canonical
+// fix command. Aligned with skillscheck.StaleNotice.Message style so
+// AI agents can parse a unified "run: lark-cli update" hint across
+// both notice types.
 func (u *UpdateInfo) Message() string {
-	return fmt.Sprintf("lark-cli %s available, current %s", u.Latest, u.Current)
+	return fmt.Sprintf("lark-cli %s available, current %s, run: lark-cli update", u.Latest, u.Current)
 }
 
 // pending stores the latest update info for the current process.
@@ -61,7 +64,7 @@ func httpClient() *http.Client {
 	}
 	return &http.Client{
 		Timeout:   fetchTimeout,
-		Transport: util.NewBaseTransport(),
+		Transport: transport.Shared(),
 	}
 }
 
@@ -111,10 +114,8 @@ func shouldSkip(version string) bool {
 		return true
 	}
 	// Suppress in CI environments.
-	for _, key := range []string{"CI", "BUILD_NUMBER", "RUN_ID"} {
-		if os.Getenv(key) != "" {
-			return true
-		}
+	if IsCIEnv() {
+		return true
 	}
 	// No version info at all — can't compare.
 	if version == "DEV" || version == "dev" || version == "" {
@@ -139,6 +140,24 @@ func isRelease(version string) bool {
 		return false
 	}
 	return !gitDescribePattern.MatchString(v)
+}
+
+// IsRelease reports whether version looks like a clean published release
+// (semver "1.0.0", or npm prerelease "1.0.0-beta.1") and not a git-describe
+// dev build like "1.0.0-12-g9b933f1-dirty". Exported so internal/skillscheck
+// can apply the same release-only gating without duplicating the regex.
+func IsRelease(version string) bool { return isRelease(version) }
+
+// IsCIEnv returns true when any of the standard CI environment variables
+// is set. Exported for internal/skillscheck so its skip rules track the
+// same CI-suppression behavior as the update notifier.
+func IsCIEnv() bool {
+	for _, key := range []string{"CI", "BUILD_NUMBER", "RUN_ID"} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // --- state file I/O ---

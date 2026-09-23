@@ -9,16 +9,18 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts/common"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	"github.com/zalando/go-keyring"
 )
 
@@ -66,6 +68,32 @@ func TestSuggestDomain_ExactMatch(t *testing.T) {
 	// Exact match: input is prefix of known AND known is prefix of input
 	if s := suggestDomain("calendar", known); s != "calendar" {
 		t.Errorf("expected 'calendar', got %q", s)
+	}
+}
+
+func TestNormalizeScopeInput(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"single", "vc:note:read", "vc:note:read"},
+		{"comma", "vc:note:read,vc:meeting.meetingevent:read", "vc:note:read vc:meeting.meetingevent:read"},
+		{"space", "vc:note:read vc:meeting.meetingevent:read", "vc:note:read vc:meeting.meetingevent:read"},
+		{"comma_and_spaces", "vc:note:read, vc:meeting.meetingevent:read", "vc:note:read vc:meeting.meetingevent:read"},
+		{"mixed_separators", "a, b\tc\nd  e", "a b c d e"},
+		{"trim_and_dedup", "  a , b , a  ", "a b"},
+		{"trailing_separators", "a,b,,", "a b"},
+		{"only_separators", " , , ", ""},
+		{"tab_separated", "im:message:send\toffline_access", "im:message:send offline_access"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeScopeInput(tc.in); got != tc.want {
+				t.Errorf("normalizeScopeInput(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -144,7 +172,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 }
 
 func TestAllKnownDomains(t *testing.T) {
-	domains := allKnownDomains()
+	domains := allKnownDomains("")
 	if len(domains) == 0 {
 		t.Fatal("expected non-empty known domains")
 	}
@@ -158,7 +186,7 @@ func TestAllKnownDomains(t *testing.T) {
 }
 
 func TestSortedKnownDomains(t *testing.T) {
-	sorted := sortedKnownDomains()
+	sorted := sortedKnownDomains("")
 	if len(sorted) == 0 {
 		t.Fatal("expected non-empty sorted domains")
 	}
@@ -168,7 +196,7 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 
 	// Should match allKnownDomains
-	known := allKnownDomains()
+	known := allKnownDomains("")
 	if len(sorted) != len(known) {
 		t.Errorf("sorted (%d) and known (%d) length mismatch", len(sorted), len(known))
 	}
@@ -187,13 +215,19 @@ func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
 	}
 }
 
+func TestGetShortcutOnlyDomainNames_IncludesNote(t *testing.T) {
+	if !slices.Contains(getShortcutOnlyDomainNames(), "note") {
+		t.Fatal("shortcut-only domains must include note so auth login can select vc:note:read")
+	}
+}
+
 func TestCollectScopesForDomains(t *testing.T) {
 	projects := registry.ListFromMetaProjects()
 	if len(projects) == 0 {
 		t.Skip("no from_meta data available")
 	}
 
-	scopes := collectScopesForDomains([]string{"calendar"}, "user")
+	scopes := collectScopesForDomains([]string{"calendar"}, "user", "")
 	if len(scopes) == 0 {
 		t.Fatal("expected non-empty scopes for calendar domain")
 	}
@@ -220,7 +254,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user")
+	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
 	}
@@ -288,10 +322,12 @@ func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	if !strings.Contains(msg, "scopes") {
 		t.Errorf("expected error to mention scopes, got: %s", msg)
 	}
-	// Stderr should contain background hint
+	// Stderr should explain the split-flow path for non-streaming agents.
 	stderrStr := stderr.String()
-	if !strings.Contains(stderrStr, "background") {
-		t.Errorf("expected stderr to mention background, got: %s", stderrStr)
+	for _, want := range []string{"--no-wait --json", "final message of the turn", "--device-code"} {
+		if !strings.Contains(stderrStr, want) {
+			t.Errorf("expected stderr to mention %q, got: %s", want, stderrStr)
+		}
 	}
 }
 
@@ -363,7 +399,7 @@ func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
 	err := handleLoginScopeIssue(&LoginOptions{}, getLoginMsg("zh"), f, &loginScopeIssue{
-		Message: "授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		Message: "授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		Hint:    "以上结果是本次授权请求用户最终确认后的结果，请勿持续重试；Scopes 未授予的原因是多样的，如 scope 被禁用；具体原因已通过授权页提示用户。可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 		Summary: &loginScopeSummary{
 			Requested: []string{"im:message:send"},
@@ -371,16 +407,18 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 			Granted:   []string{"base:app:copy"},
 		},
 	}, "ou_user", "tester")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次新授予 scopes: （空）",
-		"本次未授予 scopes: im:message:send",
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
 		"scope 被禁用",
 		"lark-cli auth status",
@@ -395,6 +433,9 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 	if strings.Contains(got, "授权成功") {
 		t.Fatalf("stderr should not contain success wording, got:\n%s", got)
 	}
+	if strings.Contains(got, "本次未授予 scopes:") {
+		t.Fatalf("stderr should not duplicate missing scopes, got:\n%s", got)
+	}
 }
 
 func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
@@ -408,8 +449,11 @@ func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
 			Granted:   []string{"base:app:copy"},
 		},
 	}, "ou_user", "tester")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
 
 	var data map[string]interface{}
@@ -472,10 +516,10 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 				"授权成功! 用户: tester (ou_user)",
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新授予 scopes: im:message:send",
-				"本次未授予 scopes: （空）",
 				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 			expectedAbsent: []string{
+				"本次未授予 scopes:",
 				"最终已授权 scopes:",
 				"已有 scopes:",
 			},
@@ -490,10 +534,10 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send",
 				"本次新授予 scopes: （空）",
-				"本次未授予 scopes: （空）",
 				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
 			},
 			expectedAbsent: []string{
+				"本次未授予 scopes:",
 				"最终已授权 scopes:",
 				"已有 scopes:",
 			},
@@ -508,9 +552,9 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 			expectedPresent: []string{
 				"本次请求 scopes: im:message:send im:message:reply",
 				"本次新授予 scopes: （空）",
-				"本次未授予 scopes: im:message:send",
 			},
 			expectedAbsent: []string{
+				"本次未授予 scopes:",
 				"已有 scopes:",
 				"最终已授权 scopes:",
 				"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
@@ -614,15 +658,17 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 	})
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
 	got := stderr.String()
 	for _, want := range []string{
-		"授权结果异常：以下请求 scopes 未被授予: im:message:send",
+		"授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
-		"本次未授予 scopes: im:message:send",
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
 		"scope 被禁用",
 		"lark-cli auth status",
@@ -636,6 +682,9 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	}
 	if strings.Contains(got, "OK: 授权成功") {
 		t.Fatalf("stderr should not contain success prefix when scopes are missing, got:\n%s", got)
+	}
+	if strings.Contains(got, "本次未授予 scopes:") {
+		t.Fatalf("stderr should not duplicate missing scopes, got:\n%s", got)
 	}
 	if strings.Contains(got, "ERROR:") {
 		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
@@ -777,12 +826,14 @@ func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScope
 		"Authorization successful! User: tester (ou_user)",
 		"Requested scopes: im:message:send",
 		"Newly granted scopes: im:message:send",
-		"Not granted scopes: (none)",
 		"Run `lark-cli auth status` to inspect all scopes currently granted to the account.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr missing %q, got:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "Not granted scopes:") {
+		t.Fatalf("stderr should not contain not granted scopes, got:\n%s", got)
 	}
 }
 
@@ -823,6 +874,87 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 	}
 }
 
+// TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty pins the
+// contract that when --json is set and pollDeviceToken returns OK=false,
+// stdout carries the structured authorization_failed event and stderr is
+// NOT polluted with a typed envelope. The returned error is a bare
+// BareError with ExitAuth so the dispatcher only propagates the exit code
+// without emitting a second envelope on top of the JSON event.
+func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
+	keyring.MockInit()
+	setupLoginConfigDir(t)
+
+	original := pollDeviceToken
+	t.Cleanup(func() { pollDeviceToken = original })
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
+	}
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  0,
+		},
+	})
+
+	err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "im:message:send",
+		JSON:    true,
+	})
+	if err == nil {
+		t.Fatal("expected error for aborted authorization")
+	}
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
+	}
+
+	// stdout: device_authorization event + authorization_failed event,
+	// the latter carrying the abort message as a structured field.
+	stdoutStr := stdout.String()
+	if !strings.Contains(stdoutStr, `"event":"authorization_failed"`) {
+		t.Errorf("stdout missing authorization_failed event, got: %s", stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "user denied") {
+		t.Errorf("stdout missing abort message, got: %s", stdoutStr)
+	}
+
+	// stderr must NOT carry a typed envelope: ErrBare propagates the exit
+	// code only, so the dispatcher emits nothing on stderr. The waiting-auth
+	// log line goes through the JSON-mode no-op `log` helper so it is also
+	// suppressed in JSON mode.
+	stderrStr := stderr.String()
+	if strings.Contains(stderrStr, `"type":"authentication"`) {
+		t.Errorf("stderr should not contain typed envelope, got: %s", stderrStr)
+	}
+	if strings.Contains(stderrStr, `"error"`) {
+		t.Errorf("stderr should not contain JSON envelope fields, got: %s", stderrStr)
+	}
+
+	// Returned error must be the bare *output.BareError signal (no envelope).
+	var bareErr *output.BareError
+	if !errors.As(err, &bareErr) {
+		t.Fatalf("expected *output.BareError, got %T: %v", err, err)
+	}
+	if bareErr.Code != output.ExitAuth {
+		t.Fatalf("BareError.Code = %d, want %d", bareErr.Code, output.ExitAuth)
+	}
+}
+
 func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		ProfileName: "default",
@@ -857,6 +989,80 @@ func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to write JSON output") {
 		t.Fatalf("error = %v, want JSON write failure", err)
+	}
+}
+
+func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  5,
+		},
+	})
+
+	err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "im:message:send",
+		NoWait:  true,
+	})
+	if err != nil {
+		t.Fatalf("authLoginRun() error = %v", err)
+	}
+
+	dec := json.NewDecoder(strings.NewReader(stdout.String()))
+	var data map[string]interface{}
+	if err := dec.Decode(&data); err != nil {
+		t.Fatalf("Decode(stdout first event) error = %v, stdout=%q", err, stdout.String())
+	}
+	hint, _ := data["hint"].(string)
+	for _, want := range []string{
+		"MUST generate QR code AND display it",
+		"lark-cli auth qrcode",
+		"Prefer PNG QR code (--output)",
+		"use ASCII (--ascii) only when the user explicitly requests it",
+		"This is a required step, do NOT skip it",
+		"CRITICAL",
+		"You MUST include the QR image in your response",
+		"Generating the file alone is NOT enough",
+		"image tags, inline images, or file attachments",
+		"Display order",
+		"place the QR code image below the URL",
+		"opaque string",
+		"cannot be modified",
+		"final message of the turn",
+		"return control to the user",
+		"do not block on --device-code in the same turn",
+		"come back and notify",
+		"YOU must execute",
+		"lark-cli auth login --device-code <device_code>",
+		"Do NOT cache",
+		"lark-cli auth login --no-wait --json",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("hint missing %q, got:\n%s", want, hint)
+		}
+	}
+	for _, unwanted := range []string{
+		"Then immediately execute",
+		"Do not instruct the user to run this command themselves",
+	} {
+		if strings.Contains(hint, unwanted) {
+			t.Fatalf("hint should not contain %q, got:\n%s", unwanted, hint)
+		}
 	}
 }
 
@@ -898,6 +1104,69 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 	}
 }
 
+func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  5,
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     ctx,
+		Scope:   "im:message:send",
+		JSON:    true,
+	})
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+
+	dec := json.NewDecoder(strings.NewReader(stdout.String()))
+	var data map[string]interface{}
+	if err := dec.Decode(&data); err != nil {
+		t.Fatalf("Decode(stdout first event) error = %v, stdout=%q", err, stdout.String())
+	}
+	hint, _ := data["agent_hint"].(string)
+	for _, want := range []string{
+		"timeout >= 600s",
+		"本轮最终消息",
+		"结束本轮",
+		"用户回复已完成授权",
+		"不要在同一轮里展示 URL 后立刻阻塞执行 --device-code",
+		"必须生成二维码并展示",
+		"lark-cli auth qrcode",
+		"优先生成 PNG 二维码（--output）",
+		"仅当用户明确要求时才使用 ASCII（--ascii）",
+		"生成后必须在回复中展示图片",
+		"仅生成文件不算完成",
+		"image 标签或内联图片",
+		"二维码图片置于 URL 下方完整展示",
+		"URL 输出规则",
+		"opaque string",
+		"不要做任何修改",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("agent_hint missing %q, got:\n%s", want, hint)
+		}
+	}
+}
+
 func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	for _, dm := range domains {
@@ -908,7 +1177,7 @@ func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 }
 
 func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := allKnownDomains()
+	domains := allKnownDomains("")
 	if domains["whiteboard"] {
 		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
 	}
@@ -918,7 +1187,7 @@ func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"docs"}, "user")
+	scopes := collectScopesForDomains([]string{"docs"}, "user", "")
 	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
 	found := false
 	for _, s := range scopes {

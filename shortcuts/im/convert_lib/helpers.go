@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -152,8 +152,9 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 // This API has lighter permission requirements and works with user identity
 // even when the target user is not in the app's visible range.
 // Response uses "users" (not "items") and "user_id" (not "open_id").
+// The basic_batch endpoint caps user_ids at 10 per request.
 func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
-	const batchSize = 50
+	const batchSize = 10
 	for i := 0; i < len(missingIDs); i += batchSize {
 		end := i + batchSize
 		if end > len(missingIDs) {
@@ -161,7 +162,7 @@ func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []str
 		}
 		batch := missingIDs[i:end]
 
-		data, err := runtime.DoAPIJSON(http.MethodPost,
+		data, err := runtime.DoAPIJSONTyped(http.MethodPost,
 			"/open-apis/contact/v3/users/basic_batch",
 			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
 			map[string]interface{}{"user_ids": batch},
@@ -197,7 +198,7 @@ func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, name
 		}
 		apiURL := "/open-apis/contact/v3/users/batch?" + strings.Join(parts, "&")
 
-		data, err := runtime.DoAPIJSON(http.MethodGet, apiURL, nil, nil)
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, apiURL, nil, nil)
 		if err != nil {
 			break
 		}

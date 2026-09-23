@@ -10,10 +10,12 @@ import (
 
 	"github.com/charmbracelet/huh"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts"
 )
 
 // domainMeta describes a domain for the interactive selector.
@@ -90,22 +92,17 @@ func buildDomainMeta(name, lang string) domainMeta {
 			Description: desc,
 		}
 	}
-	// Fallback: read from from_meta spec (legacy)
-	meta := registry.LoadFromMeta(name)
+	// Fallback: read from the typed service spec (legacy)
 	dm := domainMeta{Name: name}
-	if meta != nil {
-		if t, ok := meta["title"].(string); ok {
-			dm.Title = t
-		}
-		if d, ok := meta["description"].(string); ok {
-			dm.Description = d
-		}
+	if svc, ok := registry.ServiceTyped(name); ok {
+		dm.Title = svc.Title
+		dm.Description = svc.Description
 	}
 	return dm
 }
 
 // runInteractiveLogin shows an interactive TUI form for domain and permission selection.
-func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg) (*interactiveResult, error) {
+func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand) (*interactiveResult, error) {
 	allDomains := getDomainMetadata(lang)
 
 	// Build multi-select options
@@ -161,11 +158,11 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg) (*i
 	}
 
 	if len(selectedDomains) == 0 {
-		return nil, output.ErrValidation("no domains selected")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "no domains selected").WithParam("--domain")
 	}
 
 	// Compute scope summary
-	scopes := collectScopesForDomains(selectedDomains, "user")
+	scopes := collectScopesForDomains(selectedDomains, "user", brand)
 	if permLevel == "common" {
 		scopes = registry.FilterAutoApproveScopes(scopes)
 	}

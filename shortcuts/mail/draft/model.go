@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+//nolint:forbidigo // intermediate draft patch model errors; mail command layer wraps into typed ValidationError.
 package draft
 
 import (
@@ -9,13 +10,19 @@ import (
 	"mime"
 	"net/mail"
 	"strings"
+	"time"
 
-	"github.com/larksuite/cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
 )
 
 type DraftRaw struct {
 	DraftID string
 	RawEML  string
+}
+
+type DraftResult struct {
+	DraftID   string
+	Reference string
 }
 
 type Header struct {
@@ -133,22 +140,34 @@ type PartSummary struct {
 	CID         string `json:"cid,omitempty"`
 }
 
+// LargeAttachmentSummary describes a single large attachment registered in
+// the draft via the X-Lms-Large-Attachment-Ids header. Unlike normal
+// attachments, large attachments have no MIME part — their existence is
+// conveyed by the header plus an HTML card in the body.
+type LargeAttachmentSummary struct {
+	Token     string `json:"token"`
+	FileName  string `json:"filename,omitempty"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
+}
+
 type DraftProjection struct {
-	Subject            string        `json:"subject"`
-	To                 []Address     `json:"to,omitempty"`
-	Cc                 []Address     `json:"cc,omitempty"`
-	Bcc                []Address     `json:"bcc,omitempty"`
-	ReplyTo            []Address     `json:"reply_to,omitempty"`
-	InReplyTo          string        `json:"in_reply_to,omitempty"`
-	References         string        `json:"references,omitempty"`
-	BodyText           string        `json:"body_text,omitempty"`
-	BodyHTMLSummary    string        `json:"body_html_summary,omitempty"`
-	HasQuotedContent   bool          `json:"has_quoted_content,omitempty"`
-	HasSignature       bool          `json:"has_signature,omitempty"`
-	SignatureID        string        `json:"signature_id,omitempty"`
-	AttachmentsSummary []PartSummary `json:"attachments_summary,omitempty"`
-	InlineSummary      []PartSummary `json:"inline_summary,omitempty"`
-	Warnings           []string      `json:"warnings,omitempty"`
+	Subject                 string                   `json:"subject"`
+	To                      []Address                `json:"to,omitempty"`
+	Cc                      []Address                `json:"cc,omitempty"`
+	Bcc                     []Address                `json:"bcc,omitempty"`
+	ReplyTo                 []Address                `json:"reply_to,omitempty"`
+	InReplyTo               string                   `json:"in_reply_to,omitempty"`
+	References              string                   `json:"references,omitempty"`
+	BodyText                string                   `json:"body_text,omitempty"`
+	BodyHTMLSummary         string                   `json:"body_html_summary,omitempty"`
+	HasQuotedContent        bool                     `json:"has_quoted_content,omitempty"`
+	HasSignature            bool                     `json:"has_signature,omitempty"`
+	SignatureID             string                   `json:"signature_id,omitempty"`
+	AttachmentsSummary      []PartSummary            `json:"attachments_summary,omitempty"`
+	LargeAttachmentsSummary []LargeAttachmentSummary `json:"large_attachments_summary,omitempty"`
+	InlineSummary           []PartSummary            `json:"inline_summary,omitempty"`
+	Warnings                []string                 `json:"warnings,omitempty"`
+	Priority                string                   `json:"priority"`
 }
 
 type Patch struct {
@@ -164,10 +183,23 @@ type PatchOptions struct {
 type AttachmentTarget struct {
 	PartID string `json:"part_id,omitempty"`
 	CID    string `json:"cid,omitempty"`
+	// Token selects a large attachment by its file token (registered via
+	// the X-Lms-Large-Attachment-Ids header). Only valid for
+	// remove_attachment; replace_inline/remove_inline operate on MIME
+	// parts and do not accept Token.
+	Token string `json:"token,omitempty"`
 }
 
+// hasKey reports whether a PartID or CID is set. Used for ops that
+// target MIME parts (replace_inline, remove_inline).
 func (t AttachmentTarget) hasKey() bool {
 	return strings.TrimSpace(t.PartID) != "" || strings.TrimSpace(t.CID) != ""
+}
+
+// hasAnyKey reports whether any locator (PartID, CID, or Token) is set.
+// Used for remove_attachment which supports all three.
+func (t AttachmentTarget) hasAnyKey() bool {
+	return t.hasKey() || strings.TrimSpace(t.Token) != ""
 }
 
 type PatchOp struct {
@@ -186,11 +218,24 @@ type PatchOp struct {
 	Target      AttachmentTarget `json:"target,omitempty"`
 	SignatureID string           `json:"signature_id,omitempty"`
 
+	// Calendar event fields, used by set_calendar. The raw ISO 8601 strings
+	// are shown in dry-run output; the shortcut layer pre-builds the ICS
+	// blob into CalendarICS below before Apply runs.
+	EventSummary  string `json:"event_summary,omitempty"`
+	EventStart    string `json:"event_start,omitempty"`
+	EventEnd      string `json:"event_end,omitempty"`
+	EventLocation string `json:"event_location,omitempty"`
+
 	// RenderedSignatureHTML is set by the shortcut layer (not from JSON) after
 	// fetching and interpolating the signature. The patch layer uses this
 	// pre-rendered content for insert_signature ops.
 	RenderedSignatureHTML string           `json:"-"`
 	SignatureImages       []SignatureImage `json:"-"`
+
+	// CalendarICS holds the pre-built RFC 5545 ICS blob for a set_calendar
+	// op. Populated by the shortcut layer after the snapshot is parsed and
+	// organizer/attendee addresses can be resolved. Not serialised.
+	CalendarICS []byte `json:"-"`
 }
 
 // SignatureImage holds pre-downloaded image data for signature inline images.
@@ -271,8 +316,8 @@ func (op PatchOp) Validate() error {
 			return fmt.Errorf("add_attachment requires path")
 		}
 	case "remove_attachment":
-		if !op.Target.hasKey() {
-			return fmt.Errorf("remove_attachment requires target with at least one of part_id or cid")
+		if !op.Target.hasAnyKey() {
+			return fmt.Errorf("remove_attachment requires target with at least one of part_id, cid, or token")
 		}
 	case "add_inline":
 		if strings.TrimSpace(op.Path) == "" {
@@ -297,6 +342,26 @@ func (op PatchOp) Validate() error {
 			return fmt.Errorf("insert_signature requires signature_id")
 		}
 	case "remove_signature":
+		// No required fields.
+	case "set_calendar":
+		if strings.TrimSpace(op.EventSummary) == "" {
+			return fmt.Errorf("set_calendar requires event_summary")
+		}
+		if strings.TrimSpace(op.EventStart) == "" || strings.TrimSpace(op.EventEnd) == "" {
+			return fmt.Errorf("set_calendar requires event_start and event_end")
+		}
+		start, err := parseISO8601(op.EventStart)
+		if err != nil {
+			return fmt.Errorf("set_calendar: event_start must be a valid ISO 8601 timestamp")
+		}
+		end, err := parseISO8601(op.EventEnd)
+		if err != nil {
+			return fmt.Errorf("set_calendar: event_end must be a valid ISO 8601 timestamp")
+		}
+		if !end.After(start) {
+			return fmt.Errorf("set_calendar: event_end must be after event_start")
+		}
+	case "remove_calendar":
 		// No required fields.
 	default:
 		return fmt.Errorf("unsupported op %q", op.Op)
@@ -370,4 +435,20 @@ func MustJSON(v interface{}) string {
 		panic(fmt.Sprintf("MustJSON: %v", err))
 	}
 	return string(data)
+}
+
+// parseISO8601 tries common ISO 8601 timestamp layouts, accepting both
+// with-seconds (RFC 3339) and without-seconds variants.
+func parseISO8601(s string) (time.Time, error) {
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04Z07:00",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as ISO 8601", s)
 }

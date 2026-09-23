@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseFieldDelete = common.Shortcut{
@@ -17,7 +17,11 @@ var BaseFieldDelete = common.Shortcut{
 	Scopes:      []string{"base:field:delete"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
-	DryRun:      dryRunFieldDelete,
+	Tips: []string{
+		baseHighRiskYesTip,
+		`Example: lark-cli base +field-delete --base-token <base_token> --table-id <table_id> --field-id "Status" --yes`,
+	},
+	DryRun: dryRunFieldDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeFieldDelete(runtime)
 	},

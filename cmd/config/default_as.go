@@ -6,9 +6,9 @@ package config
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 	"github.com/spf13/cobra"
 )
 
@@ -20,14 +20,14 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 		Long:  "Without arguments, shows the current default identity. Pass user, bot, or auto to set a new default.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			multi, err := core.LoadMultiAppConfig()
+			multi, err := core.LoadOrNotConfigured()
 			if err != nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+				return err
 			}
 
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if app == nil {
-				return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli config init")
+				return core.NoActiveProfileError()
 			}
 
 			if len(args) == 0 {
@@ -41,16 +41,17 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 
 			value := args[0]
 			if value != "user" && value != "bot" && value != "auto" {
-				return output.ErrValidation("invalid identity type %q, valid values: user | bot | auto", value)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid identity type %q, valid values: user | bot | auto", value)
 			}
 
 			app.DefaultAs = core.Identity(value)
 			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 			}
 			fmt.Fprintf(f.IOStreams.ErrOut, "Default identity set to: %s\n", value)
 			return nil
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }

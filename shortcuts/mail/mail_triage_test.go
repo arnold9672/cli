@@ -7,11 +7,15 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -116,6 +120,36 @@ func TestBuildSearchParamsSystemLabelAsFolder(t *testing.T) {
 	}
 	if filterBody["label"] != nil {
 		t.Fatalf("expected label to be absent, got %#v", filterBody["label"])
+	}
+}
+
+func TestMailTriageRejectsDangerousQueryWithTypedValidation(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage", "--as", "user", "--query", "bad\x01",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected dangerous --query to return an error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Errorf("category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--query" {
+		t.Errorf("param = %q, want --query", validationErr.Param)
+	}
+	if !strings.Contains(p.Message, "control character") {
+		t.Errorf("message should mention control character, got: %s", p.Message)
 	}
 }
 
@@ -706,6 +740,43 @@ func TestFormatAddressFallbackToAddress(t *testing.T) {
 	}
 }
 
+func TestShouldRetryTriageAPIError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "rate limit",
+			err:  errs.NewAPIError(errs.SubtypeRateLimit, "too many requests"),
+			want: true,
+		},
+		{
+			name: "network",
+			err:  errs.NewNetworkError(errs.SubtypeNetworkTransport, "dial timeout"),
+			want: true,
+		},
+		{
+			name: "validation",
+			err:  errs.NewValidationError(errs.SubtypeInvalidArgument, "bad query"),
+			want: false,
+		},
+		{
+			name: "plain",
+			err:  assertErr("legacy plain error"),
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldRetryTriageAPIError(tc.err); got != tc.want {
+				t.Fatalf("shouldRetryTriageAPIError() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // --- extractTriageMessageIDs ---
 
 func TestExtractTriageMessageIDsStringItems(t *testing.T) {
@@ -904,7 +975,11 @@ func TestBuildListParamsDryRunOnlyUnread(t *testing.T) {
 func TestBuildListParamsDryRunFolderAlias(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil)
 	f := triageFilter{Folder: "sent"}
-	got, err := buildListParams(rt, "me", f, 20, "", true)
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 20, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -913,15 +988,54 @@ func TestBuildListParamsDryRunFolderAlias(t *testing.T) {
 	}
 }
 
+func TestBuildListParamsDryRunCustomFolderPreservesInput(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, nil)
+	f := triageFilter{Folder: "team-folder"}
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 20, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["folder_id"] != "team-folder" {
+		t.Fatalf("expected dry-run folder_id=team-folder, got %v", got["folder_id"])
+	}
+}
+
 func TestBuildListParamsDryRunLabelAlias(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil)
 	f := triageFilter{Label: "flagged"}
-	got, err := buildListParams(rt, "me", f, 10, "", true)
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 10, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got["label_id"] != "FLAGGED" {
 		t.Fatalf("expected label_id=FLAGGED, got %v", got["label_id"])
+	}
+}
+
+func TestBuildListParamsDryRunCustomLabelPreservesInput(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, nil)
+	f := triageFilter{Label: "custom-label"}
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 10, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["folder_id"]; ok {
+		t.Fatalf("folder_id should not be set when label is specified, got %v", got["folder_id"])
+	}
+	if got["label_id"] != "custom-label" {
+		t.Fatalf("expected dry-run label_id=custom-label, got %v", got["label_id"])
 	}
 }
 
@@ -1405,3 +1519,453 @@ func TestParseTriagePageTokenInvalidPrefix(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// --- mailbox_id preservation tests ---
+
+// TestMailTriageStructuredOutputPreservesMailboxID verifies mailbox and notice metadata.
+func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
+	tests := []struct {
+		name       string
+		mailbox    string
+		format     string
+		args       []string
+		register   func(*httpmock.Registry, string)
+		wantCount  int
+		wantNotice string
+	}{
+		{
+			name:    "list json default mailbox",
+			mailbox: "me",
+			format:  "json",
+			args:    []string{"--filter", `{"folder_id":"INBOX"}`},
+			register: func(reg *httpmock.Registry, mailbox string) {
+				registerMailTriageListStub(reg, mailbox, []string{"msg_001", "msg_002"}, false, "")
+				registerMailTriageBatchStub(reg, mailbox, []map[string]interface{}{
+					mailTriageBatchMessage("msg_001", "Subject 1"),
+					mailTriageBatchMessage("msg_002", "Subject 2"),
+				})
+			},
+			wantCount: 2,
+		},
+		{
+			name:    "list data public mailbox",
+			mailbox: "shared@company.com",
+			format:  "data",
+			args:    []string{"--filter", `{"folder_id":"INBOX"}`},
+			register: func(reg *httpmock.Registry, mailbox string) {
+				registerMailTriageListStub(reg, mailbox, []string{"msg_pub_001"}, false, "")
+				registerMailTriageBatchStub(reg, mailbox, []map[string]interface{}{
+					mailTriageBatchMessage("msg_pub_001", "Shared mailbox message"),
+				})
+			},
+			wantCount: 1,
+		},
+		{
+			name:    "search json public mailbox",
+			mailbox: "shared@corp.com",
+			format:  "json",
+			args:    []string{"--query", "shared keyword"},
+			register: func(reg *httpmock.Registry, mailbox string) {
+				registerMailTriageSearchStub(reg, mailbox, []interface{}{
+					mailTriageSearchItem("search_pub_001", "Shared search"),
+				}, false, "", "The query is too long and has been truncated to the first 50 characters for search.")
+			},
+			wantCount:  1,
+			wantNotice: "The query is too long and has been truncated to the first 50 characters for search.",
+		},
+		{
+			name:    "empty list json keeps top-level mailbox",
+			mailbox: "me",
+			format:  "json",
+			args:    []string{"--filter", `{"folder_id":"INBOX"}`},
+			register: func(reg *httpmock.Registry, mailbox string) {
+				registerMailTriageListStub(reg, mailbox, nil, false, "")
+			},
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			defer reg.Verify(t)
+
+			tt.register(reg, tt.mailbox)
+
+			args := []string{"+triage", "--format", tt.format}
+			if tt.mailbox != "me" {
+				args = append(args, "--mailbox", tt.mailbox)
+			}
+			args = append(args, tt.args...)
+
+			if err := runMountedMailShortcut(t, MailTriage, args, f, stdout); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			data := decodeMailTriageJSONOutput(t, stdout)
+			if data["mailbox_id"] != tt.mailbox {
+				t.Fatalf("top-level mailbox_id mismatch: got %v, want %q", data["mailbox_id"], tt.mailbox)
+			}
+			if tt.wantNotice != "" && data["notice"] != tt.wantNotice {
+				t.Fatalf("notice mismatch: got %v, want %q", data["notice"], tt.wantNotice)
+			}
+			messages := mailTriageMessagesFromOutput(t, data)
+			if len(messages) != tt.wantCount {
+				t.Fatalf("message count mismatch: got %d, want %d", len(messages), tt.wantCount)
+			}
+			for i, msg := range messages {
+				if msg["mailbox_id"] != tt.mailbox {
+					t.Fatalf("message[%d] mailbox_id mismatch: got %v, want %q", i, msg["mailbox_id"], tt.mailbox)
+				}
+			}
+		})
+	}
+}
+
+// TestMailTriageMissingMessageMetadataStillGetsMailboxID verifies fallback rows keep mailbox IDs.
+func TestMailTriageMissingMessageMetadataStillGetsMailboxID(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	registerMailTriageListStub(reg, "me", []string{"msg_ok", "msg_missing"}, false, "")
+	registerMailTriageBatchStub(reg, "me", []map[string]interface{}{
+		mailTriageBatchMessage("msg_ok", "Present"),
+	})
+
+	err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage",
+		"--format", "json",
+		"--filter", `{"folder_id":"INBOX"}`,
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	messages := mailTriageMessagesFromOutput(t, decodeMailTriageJSONOutput(t, stdout))
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+	for i, msg := range messages {
+		if msg["mailbox_id"] != "me" {
+			t.Fatalf("message[%d] mailbox_id mismatch: got %v, want me", i, msg["mailbox_id"])
+		}
+	}
+	if messages[1]["message_id"] != "msg_missing" || messages[1]["error"] == nil {
+		t.Fatalf("missing metadata placeholder mismatch: %#v", messages[1])
+	}
+}
+
+// TestMailTriageTableOutputPreservesMailboxContext verifies public mailbox table hints.
+func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
+	tests := []struct {
+		name              string
+		mailbox           string
+		hasMore           bool
+		wantMailboxColumn bool
+		wantMailboxHint   bool
+	}{
+		{name: "default mailbox", mailbox: "me"},
+		{name: "public mailbox", mailbox: "shared@company.com", hasMore: true, wantMailboxColumn: true, wantMailboxHint: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, stderr, reg := mailShortcutTestFactory(t)
+			defer reg.Verify(t)
+
+			registerMailTriageListStub(reg, tt.mailbox, []string{"msg_001"}, tt.hasMore, "next_page_token")
+			registerMailTriageBatchStub(reg, tt.mailbox, []map[string]interface{}{
+				mailTriageBatchMessage("msg_001", "Table message"),
+			})
+
+			args := []string{"+triage", "--max", "1", "--filter", `{"folder_id":"INBOX"}`}
+			if tt.mailbox != "me" {
+				args = append(args, "--mailbox", tt.mailbox)
+			}
+			if err := runMountedMailShortcut(t, MailTriage, args, f, stdout); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			out := stdout.String()
+			if got := strings.Contains(out, "mailbox_id"); got != tt.wantMailboxColumn {
+				t.Fatalf("mailbox_id column presence mismatch: got %v, want %v\nstdout:\n%s", got, tt.wantMailboxColumn, out)
+			}
+			if tt.wantMailboxColumn && !strings.Contains(out, tt.mailbox) {
+				t.Fatalf("table output should contain mailbox %q, stdout:\n%s", tt.mailbox, out)
+			}
+
+			errOut := stderr.String()
+			quotedMailbox := shellQuote(tt.mailbox)
+			if got := strings.Contains(errOut, "--mailbox "+quotedMailbox); got != tt.wantMailboxHint {
+				t.Fatalf("mailbox hint presence mismatch: got %v, want %v\nstderr:\n%s", got, tt.wantMailboxHint, errOut)
+			}
+			if !strings.Contains(errOut, "mail +message") {
+				t.Fatalf("stderr should contain mail +message tip, got:\n%s", errOut)
+			}
+		})
+	}
+}
+
+// TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr verifies stderr notices.
+func TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
+	f, stdout, stderr, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	registerMailTriageSearchStub(reg, "me", []interface{}{
+		mailTriageSearchItem("msg_search_notice", "Search notice result"),
+	}, false, "", notice)
+
+	if err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage",
+		"--query", strings.Repeat("q", 81),
+	}, f, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if out := stdout.String(); !strings.Contains(out, "msg_search_notice") {
+		t.Fatalf("stdout should contain table row, got:\n%s", out)
+	}
+	if errOut := stderr.String(); !strings.Contains(errOut, "notice: "+notice) {
+		t.Fatalf("stderr should contain search notice, got:\n%s", errOut)
+	}
+}
+
+// decodeMailTriageJSONOutput decodes structured triage output for assertions.
+func decodeMailTriageJSONOutput(t *testing.T, stdout interface{ Bytes() []byte }) map[string]interface{} {
+	t.Helper()
+	var data map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
+		t.Fatalf("unmarshal stdout: %v", err)
+	}
+	return data
+}
+
+// mailTriageMessagesFromOutput extracts triage messages as object maps.
+func mailTriageMessagesFromOutput(t *testing.T, data map[string]interface{}) []map[string]interface{} {
+	t.Helper()
+	rawMessages, ok := data["messages"].([]interface{})
+	if !ok {
+		t.Fatalf("messages type mismatch: %T", data["messages"])
+	}
+	messages := make([]map[string]interface{}, 0, len(rawMessages))
+	for i, item := range rawMessages {
+		msg, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("messages[%d] type mismatch: %T", i, item)
+		}
+		messages = append(messages, msg)
+	}
+	return messages
+}
+
+func registerMailTriageListStub(reg *httpmock.Registry, mailbox string, items []string, hasMore bool, pageToken string) {
+	data := map[string]interface{}{
+		"items":    items,
+		"has_more": hasMore,
+	}
+	if pageToken != "" {
+		data["page_token"] = pageToken
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath(mailbox, "messages") + "?",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": data,
+		},
+	})
+}
+
+func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, messages []map[string]interface{}) {
+	rawMessages := make([]interface{}, 0, len(messages))
+	for _, msg := range messages {
+		rawMessages = append(rawMessages, msg)
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    mailboxPath(mailbox, "messages", "batch_get"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"messages": rawMessages,
+			},
+		},
+	})
+}
+
+// registerMailTriageSearchStub registers a mailbox search response for triage tests.
+func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items []interface{}, hasMore bool, pageToken string, notices ...string) {
+	data := map[string]interface{}{
+		"items":    items,
+		"has_more": hasMore,
+	}
+	if pageToken != "" {
+		data["page_token"] = pageToken
+	}
+	if len(notices) > 0 && notices[0] != "" {
+		data["notice"] = notices[0]
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    mailboxPath(mailbox, "search"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": data,
+		},
+	})
+}
+
+func mailTriageBatchMessage(messageID, subject string) map[string]interface{} {
+	return map[string]interface{}{
+		"message_id": messageID,
+		"subject":    subject,
+		"head_from":  map[string]interface{}{"name": "Alice", "mail_address": "alice@example.com"},
+		"folder_id":  "INBOX",
+	}
+}
+
+func mailTriageSearchItem(messageID, subject string) map[string]interface{} {
+	return map[string]interface{}{
+		"meta_data": map[string]interface{}{
+			"message_biz_id": messageID,
+			"title":          subject,
+			"from":           map[string]interface{}{"name": "Alice", "mail_address": "alice@example.com"},
+		},
+	}
+}
+
+// registerMailTriageFoldersListStub registers a NON-reusable stub for the
+// mailbox folders list API. Because it is non-reusable, any second hit returns
+// "httpmock: no stub for GET .../folders" — which is exactly the assertion we
+// use to prove resolveListFilter runs once and buildListParams does NOT
+// re-resolve. folderID/folderName is the single custom folder the API reports.
+func registerMailTriageFoldersListStub(reg *httpmock.Registry, mailbox, folderID, folderName string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath(mailbox, "folders"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"id":   folderID,
+						"name": folderName,
+					},
+				},
+			},
+		},
+	})
+}
+
+// registerMailTriageListPageStub registers one page of the messages list API,
+// disambiguated from sibling pages by a URL substring unique to that page
+// (e.g. "page_size=5" for page 1 vs "page_size=2" for page 2). The substring
+// must NOT depend on query-param ordering: map iteration makes param order
+// nondeterministic, so prefer a value-only token like "page_size=N" (the N
+// differs per page because pageSize = maxCount - fetched_so_far). Non-reusable
+// so reg.Verify catches under- or over-consumption.
+func registerMailTriageListPageStub(reg *httpmock.Registry, urlSubstring string, items []string, hasMore bool, pageToken string) {
+	data := map[string]interface{}{
+		"items":    items,
+		"has_more": hasMore,
+	}
+	if pageToken != "" {
+		data["page_token"] = pageToken
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    urlSubstring,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": data,
+		},
+	})
+}
+
+// TestMailTriageCustomFolderResolvesOnceAcrossListPages is the regression test
+// for the bug where buildListParams re-called resolveFolderID on every list
+// page, turning "resolve once" into "1 + page_count" folder-list API calls and
+// easily tripping rate limits.
+//
+// Setup: a custom folder filter that forces resolveListFilter to hit the
+// folders list API once (to map folder name "team-folder" to folder_id), then two
+// messages-list pages. The folders list stub is non-reusable, so if
+// buildListParams re-resolves, the second hit fails with "no stub". The
+// messages-list stubs are page-specific (disambiguated by page_size in the
+// URL), so both pages are served and Verify asserts each fired exactly once.
+func TestMailTriageCustomFolderResolvesOnceAcrossListPages(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	// listMailboxFolders (called once by resolveListFilter) gates on the
+	// mail:user_mailbox.folder:read scope, which the default test token does
+	// not carry. Re-store the token with that scope appended so the folders
+	// API call is actually exercised (and thus the non-reusable folders stub
+	// is the load-bearing "exactly once" assertion).
+	const folderScope = "mail:user_mailbox.folder:read"
+	cfg := mailTestConfig()
+	if stored := auth.GetStoredToken(cfg.AppID, cfg.UserOpenId); stored != nil {
+		if !strings.Contains(stored.Scope, folderScope) {
+			stored.Scope = stored.Scope + " " + folderScope
+			if err := auth.SetStoredToken(stored); err != nil {
+				t.Fatalf("re-store token with folder scope: %v", err)
+			}
+		}
+	}
+
+	const (
+		mailbox    = "me"
+		folderName = "team-folder"
+		folderID   = "fld_custom_team"
+		page2Token = "tok_page2"
+	)
+	// --max 5 with listPageMax=20 → pageSize = 5-0 = 5 on page 1, then 5-3 = 2
+	// on page 2. The page_size query value disambiguates the two list stubs.
+	page1IDs := []string{"msg_a", "msg_b", "msg_c"}
+	page2IDs := []string{"msg_d", "msg_e"}
+
+	// Folders list: registered exactly once, non-reusable. Any second folder
+	// lookup (the bug) fails the test with "no stub for GET .../folders".
+	registerMailTriageFoldersListStub(reg, mailbox, folderID, folderName)
+	// Messages list, page 1: 3 ids, has_more, hands off a page-2 token. The
+	// page_size value (5 = maxCount - 0) is unique to page 1; page 2 uses 2.
+	registerMailTriageListPageStub(reg, "page_size=5", page1IDs, true, page2Token)
+	// Messages list, page 2: 2 ids, terminal.
+	registerMailTriageListPageStub(reg, "page_size=2", page2IDs, false, "")
+	// Batch metadata fetch for all 5 ids.
+	registerMailTriageBatchStub(reg, mailbox, []map[string]interface{}{
+		mailTriageBatchMessage("msg_a", "Subject A"),
+		mailTriageBatchMessage("msg_b", "Subject B"),
+		mailTriageBatchMessage("msg_c", "Subject C"),
+		mailTriageBatchMessage("msg_d", "Subject D"),
+		mailTriageBatchMessage("msg_e", "Subject E"),
+	})
+
+	args := []string{
+		"+triage",
+		"--as", "user",
+		"--mailbox", mailbox,
+		"--filter", `{"folder":"` + folderName + `"}`,
+		"--max", "5",
+		"--format", "json",
+	}
+	if err := runMountedMailShortcut(t, MailTriage, args, f, stdout); err != nil {
+		t.Fatalf("unexpected error running +triage (likely a second folders API call — the bug): %v", err)
+	}
+
+	data := decodeMailTriageJSONOutput(t, stdout)
+	messages := mailTriageMessagesFromOutput(t, data)
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 messages across 2 pages, got %d (stdout=%s)", len(messages), stdout.String())
+	}
+	if got := data["has_more"]; got != false {
+		t.Fatalf("expected has_more=false after exhausting pages, got %v", got)
+	}
+	// All registered stubs (1 folders + 2 list pages + 1 batch_get) are
+	// non-reusable; reg.Verify (deferred above) asserts each was matched
+	// exactly once. Combined with the non-reusable folders stub, this is the
+	// proof that the folders list API was called exactly once across both
+	// pages — the core invariant the fix restores.
+}

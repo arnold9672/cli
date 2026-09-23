@@ -4,7 +4,6 @@
 package mail
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,8 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -63,6 +64,9 @@ var MailTriage = common.Shortcut{
 		{Name: "query", Desc: `full-text keyword search across from/to/subject/body (max 50 chars). Example: "budget report"`},
 		{Name: "labels", Type: "bool", Desc: "include label IDs in output"},
 		{Name: "print-filter-schema", Type: "bool", Desc: "print --filter field reference and exit"},
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateBotMailboxNotMe(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailbox := resolveMailboxID(runtime)
@@ -137,7 +141,7 @@ var MailTriage = common.Shortcut{
 		outFormat := runtime.Str("format")
 		query := runtime.Str("query")
 		if query != "" {
-			if err := common.RejectDangerousChars("--query", query); err != nil {
+			if err := common.RejectDangerousCharsTyped("--query", query); err != nil {
 				return err
 			}
 		}
@@ -155,6 +159,7 @@ var MailTriage = common.Shortcut{
 		var messages []map[string]interface{}
 		var hasMore bool
 		var nextPageToken string
+		var notice string
 
 		useSearch, err := resolveTriagePath(parsed, query, filter)
 		if err != nil {
@@ -184,6 +189,9 @@ var MailTriage = common.Shortcut{
 				}, "API call failed")
 				if err != nil {
 					return err
+				}
+				if notice == "" {
+					notice, _ = searchData["notice"].(string)
 				}
 				pageMessages := buildTriageMessagesFromSearchItems(searchData["items"])
 				messages = append(messages, pageMessages...)
@@ -262,16 +270,30 @@ var MailTriage = common.Shortcut{
 			messages = []map[string]interface{}{}
 		}
 
+		// Inject mailbox_id into every message so downstream consumers
+		// (e.g. mail +message) can preserve the mailbox context for
+		// public/shared mailbox scenarios.
+		for _, msg := range messages {
+			msg["mailbox_id"] = mailbox
+		}
+
 		switch outFormat {
 		case "json", "data":
 			outData := map[string]interface{}{
 				"messages":   messages,
+				"mailbox_id": mailbox,
 				"count":      len(messages),
 				"has_more":   hasMore,
 				"page_token": nextPageToken,
 			}
+			if notice != "" {
+				outData["notice"] = notice
+			}
 			output.PrintJson(runtime.IO().Out, outData)
 		default: // "table"
+			if notice != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "notice: %s\n", notice)
+			}
 			if len(messages) == 0 {
 				fmt.Fprintln(runtime.IO().ErrOut, "No messages found.")
 				return nil
@@ -284,6 +306,9 @@ var MailTriage = common.Shortcut{
 					"subject":    sanitizeForTerminal(strVal(msg["subject"])),
 					"message_id": msg["message_id"],
 				}
+				if mailbox != "me" {
+					row["mailbox_id"] = mailbox
+				}
 				if showLabels {
 					row["labels"] = msg["labels"]
 				}
@@ -294,6 +319,9 @@ var MailTriage = common.Shortcut{
 			if hasMore && nextPageToken != "" {
 				var hint strings.Builder
 				hint.WriteString("next page: mail +triage")
+				if mailbox != "me" {
+					hint.WriteString(" --mailbox " + shellQuote(mailbox))
+				}
 				if query != "" {
 					hint.WriteString(" --query " + shellQuote(query))
 				}
@@ -303,7 +331,12 @@ var MailTriage = common.Shortcut{
 				hint.WriteString(" --page-token " + shellQuote(nextPageToken))
 				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
-			fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --message-id <id> to read full content")
+			if mailbox != "me" {
+				quotedMailbox := shellQuote(mailbox)
+				fmt.Fprintln(runtime.IO().ErrOut, "tip: read full content: single message use mail +message --mailbox "+quotedMailbox+" --message-id <id>; multiple messages use mail +messages --mailbox "+quotedMailbox+" --message-ids <id1>,<id2>,<id3>")
+			} else {
+				fmt.Fprintln(runtime.IO().ErrOut, "tip: read full content: single message use mail +message --message-id <id>; multiple messages use mail +messages --message-ids <id1>,<id2>,<id3>")
+			}
 		}
 		return nil
 	},
@@ -400,9 +433,9 @@ func parseTriageFilter(filterStr string) (triageFilter, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&filter); err != nil {
 		if hint := triageFilterUnknownFieldHint(err.Error()); hint != "" {
-			return triageFilter{}, output.ErrValidation("invalid --filter: %s", hint)
+			return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %s", hint)
 		}
-		return triageFilter{}, output.ErrValidation("invalid --filter: %s", err)
+		return triageFilter{}, mailValidationParamError("--filter", "invalid --filter: %s", err)
 	}
 	return filter, nil
 }
@@ -737,13 +770,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["folder_id"] = folderIDFromFilter
 			}
 		} else {
-			resolved, err := resolveFolderID(runtime, mailboxID, folderIDFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["folder_id"] = resolved
-			}
+			params["folder_id"] = folderIDFromFilter
 		}
 	} else if folderFromFilter != "" {
 		if dryRun {
@@ -753,13 +780,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["folder_id"] = folderFromFilter
 			}
 		} else {
-			resolved, err := resolveFolderName(runtime, mailboxID, folderFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["folder_id"] = resolved
-			}
+			params["folder_id"] = folderFromFilter
 		}
 	}
 
@@ -778,13 +799,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["label_id"] = labelIDFromFilter
 			}
 		} else {
-			resolved, err := resolveLabelID(runtime, mailboxID, labelIDFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["label_id"] = resolved
-			}
+			params["label_id"] = labelIDFromFilter
 		}
 	} else if labelFromFilter != "" {
 		if dryRun {
@@ -794,13 +809,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["label_id"] = labelFromFilter
 			}
 		} else {
-			resolved, err := resolveLabelName(runtime, mailboxID, labelFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["label_id"] = resolved
-			}
+			params["label_id"] = labelFromFilter
 		}
 	}
 
@@ -921,16 +930,16 @@ func resolveTriagePath(parsed triagePageToken, query string, filter triageFilter
 	switch parsed.Path {
 	case "search":
 		if !paramWantsSearch && (strings.TrimSpace(query) != "" || len(triageQueryFilterFields(filter)) > 0) {
-			return false, fmt.Errorf("--page-token has search: prefix but current --query/--filter parameters indicate list path; remove conflicting parameters or use the correct token")
+			return false, mailValidationParamError("--page-token", "--page-token has search: prefix but current --query/--filter parameters indicate list path; remove conflicting parameters or use the correct token")
 		}
 		return true, nil
 	case "list":
 		if paramWantsSearch {
-			return false, fmt.Errorf("--page-token has list: prefix but --query or --filter contains search-only fields (e.g. from/to/subject); these parameters would be silently ignored — remove them or use a search: token")
+			return false, mailValidationParamError("--page-token", "--page-token has list: prefix but --query or --filter contains search-only fields (e.g. from/to/subject); these parameters would be silently ignored; remove them or use a search: token")
 		}
 		return false, nil
 	default:
-		return false, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
+		return false, mailValidationParamError("--page-token", "invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
 	}
 }
 
@@ -957,15 +966,15 @@ func parseTriagePageToken(token string) (triagePageToken, error) {
 	}
 	idx := strings.IndexByte(token, ':')
 	if idx < 0 {
-		return triagePageToken{}, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
+		return triagePageToken{}, mailValidationParamError("--page-token", "invalid --page-token: must start with 'search:' or 'list:' prefix (token was obtained from a previous mail +triage response)")
 	}
 	path := token[:idx]
 	raw := token[idx+1:]
 	if path != "search" && path != "list" {
-		return triagePageToken{}, fmt.Errorf("invalid --page-token: must start with 'search:' or 'list:' prefix, got %q", path)
+		return triagePageToken{}, mailValidationParamError("--page-token", "invalid --page-token: must start with 'search:' or 'list:' prefix, got %q", path)
 	}
 	if raw == "" {
-		return triagePageToken{}, fmt.Errorf("invalid --page-token: token value is empty after '%s:' prefix", path)
+		return triagePageToken{}, mailValidationParamError("--page-token", "invalid --page-token: token value is empty after '%s:' prefix", path)
 	}
 	return triagePageToken{Path: path, RawToken: raw}, nil
 }
@@ -1087,24 +1096,18 @@ func doJSONAPI(runtime *common.RuntimeContext, req *larkcore.ApiReq, action stri
 	var lastErr error
 	for attempt := 0; attempt <= triageAPIRetries; attempt++ {
 		apiResp, err := runtime.DoAPI(req)
-		if err == nil {
-			var result interface{}
-			dec := json.NewDecoder(bytes.NewReader(apiResp.RawBody))
-			dec.UseNumber()
-			if err := dec.Decode(&result); err != nil {
-				return nil, output.Errorf(output.ExitAPI, "api_error", "%s: response parse error: %s", action, err)
+		if err != nil {
+			lastErr = mailDecorateProblemMessage(client.WrapDoAPIError(err), "%s", action)
+			if attempt == triageAPIRetries {
+				return nil, lastErr
 			}
-			data, handleErr := common.HandleApiResult(result, nil, action)
+		} else {
+			data, handleErr := runtime.ClassifyAPIResponse(apiResp)
 			if handleErr == nil {
 				return data, nil
 			}
-			lastErr = handleErr
-			if !shouldRetryTriageAPIError(handleErr) || attempt == triageAPIRetries {
-				return nil, handleErr
-			}
-		} else {
-			lastErr = output.Errorf(output.ExitAPI, "api_error", "%s: %s", action, err)
-			if attempt == triageAPIRetries {
+			lastErr = mailDecorateProblemMessage(handleErr, "%s", action)
+			if !shouldRetryTriageAPIError(lastErr) || attempt == triageAPIRetries {
 				return nil, lastErr
 			}
 		}
@@ -1114,11 +1117,11 @@ func doJSONAPI(runtime *common.RuntimeContext, req *larkcore.ApiReq, action stri
 }
 
 func shouldRetryTriageAPIError(err error) bool {
-	exitErr, ok := err.(*output.ExitError)
-	if !ok || exitErr.Detail == nil {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
 		return false
 	}
-	return exitErr.Detail.Type == "rate_limit" || exitErr.Code == output.ExitNetwork
+	return p.Subtype == errs.SubtypeRateLimit || p.Category == errs.CategoryNetwork
 }
 
 func toQueryParams(params map[string]interface{}) larkcore.QueryParams {

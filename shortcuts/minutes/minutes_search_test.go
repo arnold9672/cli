@@ -6,13 +6,15 @@ package minutes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -63,10 +65,11 @@ func TestMinutesSearchParseTimeRangeErrors(t *testing.T) {
 		start       string
 		end         string
 		wantMessage string
+		wantParam   string
 	}{
-		{name: "invalid start", start: "bad-start", wantMessage: "--start:"},
-		{name: "invalid end", end: "bad-end", wantMessage: "--end:"},
-		{name: "start after end", start: "2026-03-26", end: "2026-03-25", wantMessage: "is after --end"},
+		{name: "invalid start", start: "bad-start", wantMessage: "--start:", wantParam: "--start"},
+		{name: "invalid end", end: "bad-end", wantMessage: "--end:", wantParam: "--end"},
+		{name: "start after end", start: "2026-03-26", end: "2026-03-25", wantMessage: "is after --end", wantParam: "--start"},
 	}
 
 	for _, tt := range tests {
@@ -87,6 +90,16 @@ func TestMinutesSearchParseTimeRangeErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantMessage) {
 				t.Fatalf("error = %v, want %q", err, tt.wantMessage)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("Param = %q, want %q", ve.Param, tt.wantParam)
 			}
 		})
 	}
@@ -155,38 +168,6 @@ func TestBuildMinutesSearchParamsDefaultPageSize(t *testing.T) {
 	}
 }
 
-// TestResolveUserIDs verifies me expansion, deduplication, and nil handling.
-func TestResolveUserIDs(t *testing.T) {
-	t.Parallel()
-
-	cmd := &cobra.Command{Use: "test"}
-	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
-
-	got, err := resolveUserIDs("--owner-ids", []string{"me"}, runtime)
-	if err != nil {
-		t.Fatalf("resolveUserIDs([me]) unexpected error: %v", err)
-	}
-	if len(got) != 1 || got[0] != "ou_testuser" {
-		t.Fatalf("resolveUserIDs([me]) = %v, want [ou_testuser]", got)
-	}
-
-	got, err = resolveUserIDs("--owner-ids", []string{"ou_other", "me", "Me"}, runtime)
-	if err != nil {
-		t.Fatalf("resolveUserIDs([ou_other, me, Me]) unexpected error: %v", err)
-	}
-	if len(got) != 2 || got[0] != "ou_other" || got[1] != "ou_testuser" {
-		t.Fatalf("resolveUserIDs([ou_other, me, Me]) = %v, want [ou_other ou_testuser]", got)
-	}
-
-	got, err = resolveUserIDs("--owner-ids", nil, runtime)
-	if err != nil {
-		t.Fatalf("resolveUserIDs(nil) unexpected error: %v", err)
-	}
-	if got != nil {
-		t.Fatalf("resolveUserIDs(nil) = %v, want nil", got)
-	}
-}
-
 // TestBuildTimeFilter verifies time filters are only populated for provided bounds.
 func TestBuildTimeFilter(t *testing.T) {
 	t.Parallel()
@@ -240,6 +221,16 @@ func TestMinutesSearchValidationMeRequiresResolvableUser(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "resolvable open_id") {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+			}
+			if ve.Param != "--"+tt.flag {
+				t.Fatalf("Param = %q, want --%s", ve.Param, tt.flag)
 			}
 		})
 	}
@@ -299,6 +290,13 @@ func TestMinutesSearchValidationNoFilter(t *testing.T) {
 	if !strings.Contains(err.Error(), "specify at least one") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
 }
 
 // TestMinutesSearchValidationInvalidParticipantID verifies participant IDs must be valid open_ids.
@@ -311,6 +309,16 @@ func TestMinutesSearchValidationInvalidParticipantID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid user ID error")
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--participant-ids" {
+		t.Fatalf("Param = %q, want --participant-ids", ve.Param)
+	}
 }
 
 // TestMinutesSearchValidationInvalidOwnerID verifies owner IDs must be valid open_ids.
@@ -322,6 +330,16 @@ func TestMinutesSearchValidationInvalidOwnerID(t *testing.T) {
 	err := MinutesSearch.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected invalid owner ID error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--owner-ids" {
+		t.Fatalf("Param = %q, want --owner-ids", ve.Param)
 	}
 }
 
@@ -337,6 +355,16 @@ func TestMinutesSearchValidationQueryTooLong(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "length must be between 1 and 50 characters") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--query" {
+		t.Fatalf("Param = %q, want --query", ve.Param)
 	}
 }
 
@@ -366,6 +394,16 @@ func TestMinutesSearchValidationPageSizeAboveMax(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--page-size") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--page-size" {
+		t.Fatalf("Param = %q, want --page-size", ve.Param)
 	}
 }
 
@@ -403,6 +441,13 @@ func TestMinutesSearchValidationTimeErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantMessage) {
 				t.Fatalf("error = %v, want %q", err, tt.wantMessage)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
 			}
 		})
 	}
@@ -481,7 +526,7 @@ func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"minute_1", "周会摘要", "周会纪要", "https://meetings.feishu.cn/minutes/obcn123", "https://p3-lark-file.byteimg.com/img/xxxx.jpg", "next_token", "more available"} {
+	for _, want := range []string{"minute_1", "周会摘要", "周会纪要", "https://meetings.feishu.cn/minutes/obcn123", "next_token", "more available"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q, got: %s", want, out)
 		}
@@ -564,6 +609,8 @@ func TestMinutesSearchExecuteShowsPaginationHintForTableFormat(t *testing.T) {
 func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	t.Parallel()
 
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -572,6 +619,7 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 			"code": 0,
 			"msg":  "ok",
 			"data": map[string]interface{}{
+				"notice": notice,
 				"items": []interface{}{
 					nil,
 					map[string]interface{}{
@@ -596,6 +644,9 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	reg.Verify(t)
 
 	var envelope struct {
+		Data struct {
+			Notice string `json:"notice"`
+		} `json:"data"`
 		Meta struct {
 			Count int `json:"count"`
 		} `json:"meta"`
@@ -605,6 +656,9 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	}
 	if envelope.Meta.Count != 1 {
 		t.Fatalf("meta.count = %d, want 1", envelope.Meta.Count)
+	}
+	if envelope.Data.Notice != notice {
+		t.Fatalf("data.notice = %q, want %q", envelope.Data.Notice, notice)
 	}
 }
 
@@ -618,7 +672,6 @@ func TestMinuteSearchFieldExtractors(t *testing.T) {
 		"meta_data": map[string]interface{}{
 			"description": "周会纪要",
 			"app_link":    "https://meetings.feishu.cn/minutes/obcn123",
-			"avatar":      "https://p3-lark-file.byteimg.com/img/xxxx.jpg",
 		},
 	}
 
@@ -634,9 +687,6 @@ func TestMinuteSearchFieldExtractors(t *testing.T) {
 	if got := minuteSearchAppLink(item); got != "https://meetings.feishu.cn/minutes/obcn123" {
 		t.Fatalf("minuteSearchAppLink() = %q", got)
 	}
-	if got := minuteSearchAvatar(item); got != "https://p3-lark-file.byteimg.com/img/xxxx.jpg" {
-		t.Fatalf("minuteSearchAvatar() = %q", got)
-	}
 }
 
 // TestMinuteSearchFieldExtractorsFallbacks verifies extractors keep working for alternate sample data.
@@ -649,7 +699,6 @@ func TestMinuteSearchFieldExtractorsFallbacks(t *testing.T) {
 		"meta_data": map[string]interface{}{
 			"description": "回退纪要",
 			"app_link":    "https://meetings.feishu.cn/minutes/fallback",
-			"avatar":      "https://p3-lark-file.byteimg.com/img/fallback.jpg",
 		},
 	}
 
@@ -661,9 +710,6 @@ func TestMinuteSearchFieldExtractorsFallbacks(t *testing.T) {
 	}
 	if got := minuteSearchAppLink(item); got != "https://meetings.feishu.cn/minutes/fallback" {
 		t.Fatalf("minuteSearchAppLink() = %q", got)
-	}
-	if got := minuteSearchAvatar(item); got != "https://p3-lark-file.byteimg.com/img/fallback.jpg" {
-		t.Fatalf("minuteSearchAvatar() = %q", got)
 	}
 }
 
@@ -685,7 +731,32 @@ func TestMinuteSearchFieldExtractorsMissingMetaData(t *testing.T) {
 	if got := minuteSearchAppLink(item); got != "" {
 		t.Fatalf("minuteSearchAppLink() = %q, want empty", got)
 	}
-	if got := minuteSearchAvatar(item); got != "" {
-		t.Fatalf("minuteSearchAvatar() = %q, want empty", got)
+}
+
+// TestStripAvatarFromItems verifies the avatar field is removed from items in place.
+func TestStripAvatarFromItems(t *testing.T) {
+	t.Parallel()
+
+	items := []interface{}{
+		map[string]interface{}{
+			"token": "minute_1",
+			"meta_data": map[string]interface{}{
+				"description": "周会纪要",
+				"avatar":      "https://p3-lark-file.byteimg.com/img/xxxx.jpg",
+			},
+		},
+		nil,
+		map[string]interface{}{"token": "minute_no_meta"},
+	}
+
+	stripAvatarFromItems(items)
+
+	first, _ := items[0].(map[string]interface{})
+	meta, _ := first["meta_data"].(map[string]interface{})
+	if _, ok := meta["avatar"]; ok {
+		t.Fatalf("avatar should be stripped, got meta = %v", meta)
+	}
+	if meta["description"] != "周会纪要" {
+		t.Fatalf("description should be preserved, got %v", meta["description"])
 	}
 }

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var (
@@ -25,6 +25,7 @@ const (
 	// These limits follow the current product-side import constraints per format.
 	driveImport20MBFileSizeLimit  int64 = 20 * 1024 * 1024
 	driveImport100MBFileSizeLimit int64 = 100 * 1024 * 1024
+	driveImport500MBFileSizeLimit int64 = 500 * 1024 * 1024
 	driveImport600MBFileSizeLimit int64 = 600 * 1024 * 1024
 	driveImport800MBFileSizeLimit int64 = 800 * 1024 * 1024
 )
@@ -42,6 +43,8 @@ var driveImportExtToDocTypes = map[string][]string{
 	"xlsx":     {"sheet", "bitable"},
 	"xls":      {"sheet"},
 	"csv":      {"sheet", "bitable"},
+	"base":     {"bitable"},
+	"pptx":     {"slides"},
 }
 
 // driveImportSpec contains the user-facing import inputs after normalization.
@@ -50,6 +53,7 @@ type driveImportSpec struct {
 	DocType     string
 	FolderToken string
 	Name        string
+	TargetToken string // existing bitable token to import data into (only for type=bitable)
 }
 
 func (s driveImportSpec) FileExtension() string {
@@ -66,7 +70,7 @@ func (s driveImportSpec) TargetFileName() string {
 
 // CreateTaskBody builds the request body expected by /drive/v1/import_tasks.
 func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{} {
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"file_extension": s.FileExtension(),
 		"file_token":     fileToken,
 		"type":           s.DocType,
@@ -78,6 +82,12 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 			"mount_key": s.FolderToken,
 		},
 	}
+
+	if s.DocType == "bitable" && s.TargetToken != "" {
+		body["token"] = s.TargetToken
+	}
+
+	return body
 }
 
 // uploadMediaForImport uploads the source file to the temporary import media
@@ -85,7 +95,7 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, docType string) (string, error) {
 	importInfo, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
-		return "", common.WrapInputStatError(err)
+		return "", driveInputStatError(err)
 	}
 
 	fileSize := importInfo.Size()
@@ -102,7 +112,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import: %s (%s)\n", fileName, common.FormatSize(fileSize))
 		// upload_all for import works without parent_node; omitting it preserves
 		// the existing root-level import staging behavior.
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
@@ -114,7 +124,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import via multipart upload: %s (%s)\n", fileName, common.FormatSize(fileSize))
 	// upload_prepare is stricter than upload_all here and expects parent_node to
 	// be sent explicitly, even when import uses the implicit root staging area.
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
@@ -132,7 +142,7 @@ func buildImportMediaExtra(filePath, docType string) (string, error) {
 		"file_extension": strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), "."),
 	})
 	if err != nil {
-		return "", output.Errorf(output.ExitInternal, "json_error", "build upload extra failed: %v", err)
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "build upload extra failed: %v", err).WithCause(err)
 	}
 	return string(extraBytes), nil
 }
@@ -143,7 +153,9 @@ func driveImportFileSizeLimit(filePath, docType string) (int64, bool) {
 	switch strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".") {
 	case "docx", "doc":
 		return driveImport600MBFileSizeLimit, true
-	case "txt", "md", "mark", "markdown", "html", "xls":
+	case "pptx":
+		return driveImport500MBFileSizeLimit, true
+	case "txt", "md", "mark", "markdown", "html", "xls", "base":
 		return driveImport20MBFileSizeLimit, true
 	case "xlsx":
 		return driveImport800MBFileSizeLimit, true
@@ -166,20 +178,20 @@ func validateDriveImportFileSize(filePath, docType string, fileSize int64) error
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".")
 	if ext == "csv" {
 		// CSV is the only source format whose limit depends on the target type.
-		return output.ErrValidation(
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"file %s exceeds %s import limit for .csv when importing as %s",
 			common.FormatSize(fileSize),
 			common.FormatSize(limit),
 			docType,
-		)
+		).WithParam("--file")
 	}
 
-	return output.ErrValidation(
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
 		"file %s exceeds %s import limit for .%s",
 		common.FormatSize(fileSize),
 		common.FormatSize(limit),
 		ext,
-	)
+	).WithParam("--file")
 }
 
 // validateDriveImportSpec enforces the CLI-level compatibility rules before any
@@ -187,18 +199,18 @@ func validateDriveImportFileSize(filePath, docType string, fileSize int64) error
 func validateDriveImportSpec(spec driveImportSpec) error {
 	ext := spec.FileExtension()
 	if ext == "" {
-		return output.ErrValidation("file must have an extension (e.g. .md, .docx, .xlsx)")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must have an extension (e.g. .md, .docx, .xlsx, .pptx)").WithParam("--file")
 	}
 
 	switch spec.DocType {
-	case "docx", "sheet", "bitable":
+	case "docx", "sheet", "bitable", "slides":
 	default:
-		return output.ErrValidation("unsupported target document type: %s. Supported types are: docx, sheet, bitable", spec.DocType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported target document type: %s. Supported types are: docx, sheet, bitable, slides", spec.DocType).WithParam("--type")
 	}
 
 	supportedTypes, ok := driveImportExtToDocTypes[ext]
 	if !ok {
-		return output.ErrValidation("unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv", ext)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv, base, pptx", ext).WithParam("--file")
 	}
 
 	typeAllowed := false
@@ -217,16 +229,69 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 			hint = fmt.Sprintf(".%s files can only be imported as 'sheet' or 'bitable', not '%s'", ext, spec.DocType)
 		case "xls":
 			hint = fmt.Sprintf(".xls files can only be imported as 'sheet', not '%s'", spec.DocType)
+		case "base":
+			hint = fmt.Sprintf(".base files can only be imported as 'bitable', not '%s'", spec.DocType)
+		case "pptx":
+			hint = fmt.Sprintf(".pptx files can only be imported as 'slides', not '%s'", spec.DocType)
 		default:
 			hint = fmt.Sprintf(".%s files can only be imported as 'docx', not '%s'", ext, spec.DocType)
 		}
-		return output.ErrValidation("file type mismatch: %s", hint)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "file type mismatch: %s", hint)
 	}
 
 	if strings.TrimSpace(spec.FolderToken) != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
+	}
+
+	if strings.TrimSpace(spec.TargetToken) != "" {
+		if spec.DocType != "bitable" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-token is only supported when --type is bitable").WithParam("--target-token")
+		}
+		if err := validate.ResourceName(spec.TargetToken, "--target-token"); err != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--target-token")
+		}
+	}
+
+	return nil
+}
+
+func appendDriveImportFolderTokenWikiCheckDryRun(dry *common.DryRunAPI, spec driveImportSpec) {
+	folderToken := strings.TrimSpace(spec.FolderToken)
+	if folderToken == "" {
+		return
+	}
+
+	dry.GET("/open-apis/wiki/v2/spaces/get_node").
+		Desc("[0] Validate whether --folder-token is a wiki node").
+		Params(map[string]interface{}{"token": folderToken})
+}
+
+func rejectDriveImportWikiFolderToken(runtime *common.RuntimeContext, folderToken string) error {
+	folderToken = strings.TrimSpace(folderToken)
+	if folderToken == "" {
+		return nil
+	}
+
+	data, err := runtime.CallAPITyped(
+		"GET",
+		"/open-apis/wiki/v2/spaces/get_node",
+		map[string]interface{}{"token": folderToken},
+		nil,
+	)
+	if err == nil {
+		node := common.GetMap(data, "node")
+		if len(node) == 0 {
+			return nil
+		}
+
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--folder-token only supports Drive folder tokens, but the provided token resolves to a wiki node",
+		).
+			WithParam("--folder-token").
+			WithHint("Pass a Drive folder token, or omit --folder-token to import into the Drive root folder. Wiki node tokens are not accepted as import mount folders.")
 	}
 
 	return nil
@@ -283,14 +348,14 @@ func driveImportTaskResultCommand(ticket string) string {
 // createDriveImportTask creates the server-side import task after the media
 // upload has produced a reusable file token.
 func createDriveImportTask(runtime *common.RuntimeContext, spec driveImportSpec, fileToken string) (string, error) {
-	data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/import_tasks", nil, spec.CreateTaskBody(fileToken))
+	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/import_tasks", nil, spec.CreateTaskBody(fileToken))
 	if err != nil {
 		return "", err
 	}
 
 	ticket := common.GetString(data, "ticket")
 	if ticket == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "no ticket returned from import_tasks")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "no ticket returned from import_tasks")
 	}
 	return ticket, nil
 }
@@ -298,10 +363,10 @@ func createDriveImportTask(runtime *common.RuntimeContext, spec driveImportSpec,
 // getDriveImportStatus fetches the current state of an import task by ticket.
 func getDriveImportStatus(runtime *common.RuntimeContext, ticket string) (driveImportStatus, error) {
 	if err := validate.ResourceName(ticket, "--ticket"); err != nil {
-		return driveImportStatus{}, output.ErrValidation("%s", err)
+		return driveImportStatus{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--ticket")
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/drive/v1/import_tasks/%s", validate.EncodePathSegment(ticket)),
 		nil,
@@ -366,7 +431,7 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 			if msg == "" {
 				msg = status.StatusLabel()
 			}
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "import failed with status %d: %s", status.JobStatus, msg)
+			return status, false, errs.NewAPIError(errs.SubtypeServerError, "import failed with status %d: %s", status.JobStatus, msg)
 		}
 	}
 	if !hadSuccessfulPoll && lastErr != nil {

@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -143,28 +142,27 @@ func TestShouldSkip(t *testing.T) {
 
 func TestIsRelease(t *testing.T) {
 	tests := []struct {
-		version string
-		want    bool
+		name string
+		ver  string
+		want bool
 	}{
-		{"1.0.0", true},
-		{"v1.0.0", true},
-		{"0.1.0", true},
-		{"1.0.0-beta.1", true},
-		{"1.0.0-rc.1", true},
-		{"2.0.0-alpha.0", true},
-		{"v1.0.0-12-g9b933f1", false},       // git describe
-		{"v1.0.0-12-g9b933f1-dirty", false}, // git describe dirty
-		{"v2.1.0-3-gabcdef0", false},        // git describe short
-		{"9b933f1", false},                  // bare commit hash
-		{"DEV", false},                      // dev marker
-		{"", false},                         // empty
-		{"1.0", false},                      // incomplete semver
+		{"clean_semver", "1.0.0", true},
+		{"v_prefix", "v1.0.0", true},
+		{"prerelease", "1.0.0-beta.1", true},
+		{"rc", "1.0.0-rc.1", true},
+		{"alpha_prerelease", "2.0.0-alpha.0", true},
+		{"git_describe_dirty", "1.0.0-12-g9b933f1-dirty", false},
+		{"git_describe_clean", "1.0.0-12-g9b933f1", false},
+		{"bare_commit_hash", "9b933f1", false},
+		{"dev_marker", "DEV", false},
+		{"incomplete_semver", "1.0", false},
+		{"empty", "", false},
+		{"invalid", "not-a-version", false},
 	}
 	for _, tt := range tests {
-		t.Run(tt.version, func(t *testing.T) {
-			got := isRelease(tt.version)
-			if got != tt.want {
-				t.Errorf("isRelease(%q) = %v, want %v", tt.version, got, tt.want)
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsRelease(tt.ver); got != tt.want {
+				t.Errorf("IsRelease(%q) = %v, want %v", tt.ver, got, tt.want)
 			}
 		})
 	}
@@ -172,13 +170,10 @@ func TestIsRelease(t *testing.T) {
 
 func TestUpdateInfoMethods(t *testing.T) {
 	info := &UpdateInfo{Current: "1.0.0", Latest: "2.0.0"}
-
-	msg := info.Message()
-	if !strings.Contains(msg, "2.0.0") {
-		t.Errorf("Message() missing latest version: %s", msg)
-	}
-	if !strings.Contains(msg, "1.0.0") {
-		t.Errorf("Message() missing current version: %s", msg)
+	got := info.Message()
+	want := "lark-cli 2.0.0 available, current 1.0.0, run: lark-cli update"
+	if got != want {
+		t.Errorf("Message() = %q, want %q", got, want)
 	}
 }
 
@@ -263,4 +258,20 @@ func TestPendingAtomicAccess(t *testing.T) {
 
 	// Clean up for other tests
 	SetPending(nil)
+}
+
+func TestIsCIEnv(t *testing.T) {
+	clearSkipEnv(t)
+	if IsCIEnv() {
+		t.Fatal("IsCIEnv() = true after clearSkipEnv, want false")
+	}
+	for _, key := range []string{"CI", "BUILD_NUMBER", "RUN_ID"} {
+		t.Run(key, func(t *testing.T) {
+			clearSkipEnv(t)
+			t.Setenv(key, "1")
+			if !IsCIEnv() {
+				t.Errorf("IsCIEnv() = false with %s=1, want true", key)
+			}
+		})
+	}
 }

@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
 var (
@@ -28,8 +28,9 @@ const (
 	LarkCliService = "lark-cli"
 )
 
-// wrapError is a helper to wrap underlying errors into output.ExitError.
-// It formats the error message and provides a hint for troubleshooting keychain access issues.
+// wrapError wraps underlying keychain failures into a typed *errs.APIError
+// (exit code 1) carrying a hint for troubleshooting keychain access issues.
+// nil and ErrNotFound pass through unchanged.
 func wrapError(op string, err error) error {
 	if err == nil || errors.Is(err, ErrNotFound) {
 		return err
@@ -41,13 +42,16 @@ func wrapError(op string, err error) error {
 	if errors.Is(err, errNotInitialized) {
 		hint = "The keychain master key may have been cleaned up or deleted. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox. Otherwise, please reconfigure the CLI by running lark-cli config init."
 	}
+	hint += extraHint(err)
 
 	func() {
 		defer func() { recover() }()
 		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
 	}()
 
-	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
+	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).
+		WithHint("%s", hint).
+		WithCause(err)
 }
 
 // KeychainAccess abstracts keychain Get/Set/Remove for dependency injection.

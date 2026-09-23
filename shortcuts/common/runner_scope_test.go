@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
 )
 
 type scopeCheckTokenResolver struct {
@@ -25,156 +25,82 @@ func (r *scopeCheckTokenResolver) ResolveToken(ctx context.Context, req credenti
 	return r.result, r.err
 }
 
-func TestEnhancePermissionError_MissingScopeType(t *testing.T) {
-	scopes := []string{"calendar:calendar:read"}
-	err := &output.ExitError{
-		Code:   1,
-		Detail: &output.ErrDetail{Type: "missing_scope", Message: "missing scope"},
-	}
-	got := enhancePermissionError(err, scopes)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", got)
-	}
-	if exitErr.Detail.Hint == "" {
-		t.Error("expected hint for missing_scope type")
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "calendar:calendar:read") {
-		t.Errorf("hint %q missing scope info", exitErr.Detail.Hint)
-	}
-}
-
-func TestEnhancePermissionError_KeywordPermission(t *testing.T) {
+// TestEnhancePermissionError_TypedPermissionErrorRouted pins typed routing:
+// an *errs.PermissionError gets enhanced regardless of its Message text,
+// decoupling this helper from canonical-message rewrites that would
+// previously break the legacy keyword scan.
+func TestEnhancePermissionError_TypedPermissionErrorRouted(t *testing.T) {
 	scopes := []string{"drive:drive:read"}
-	err := &output.ExitError{
-		Code:   1,
-		Detail: &output.ErrDetail{Type: "api_error", Message: "Permission denied for resource"},
+	err := &errs.PermissionError{
+		Problem: errs.Problem{
+			Category: errs.CategoryAuthorization,
+			Subtype:  errs.SubtypeMissingScope,
+			Message:  "access denied: app cli_x has not applied for the required scope(s)",
+		},
 	}
 	got := enhancePermissionError(err, scopes)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", got)
+	var permErr *errs.PermissionError
+	if !errors.As(got, &permErr) {
+		t.Fatalf("expected *PermissionError, got %T", got)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "drive:drive:read") {
-		t.Errorf("hint %q missing scope info", exitErr.Detail.Hint)
+	if !strings.Contains(permErr.Hint, "drive:drive:read") {
+		t.Errorf("hint %q missing scope info", permErr.Hint)
 	}
 }
 
-func TestEnhancePermissionError_KeywordScope(t *testing.T) {
-	scopes := []string{"task:task:read"}
-	err := &output.ExitError{
-		Code:   1,
-		Detail: &output.ErrDetail{Type: "api_error", Message: "Insufficient scope for operation"},
-	}
-	got := enhancePermissionError(err, scopes)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", got)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "task:task:read") {
-		t.Errorf("hint %q missing scope info", exitErr.Detail.Hint)
-	}
-}
-
-func TestEnhancePermissionError_KeywordAuthorization(t *testing.T) {
+// TestEnhancePermissionError_NonPermissionErrorsPassThrough pins that any
+// error that is not an *errs.PermissionError is returned unchanged. Typed
+// routing means the upstream message text never flips an unrelated error into
+// the permission-enhancement path.
+func TestEnhancePermissionError_NonPermissionErrorsPassThrough(t *testing.T) {
 	scopes := []string{"contact:contact:read"}
-	err := &output.ExitError{
-		Code:   1,
-		Detail: &output.ErrDetail{Type: "api_error", Message: "Authorization required"},
-	}
-	got := enhancePermissionError(err, scopes)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", got)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "contact:contact:read") {
-		t.Errorf("hint %q missing scope info", exitErr.Detail.Hint)
-	}
-}
-
-func TestEnhancePermissionError(t *testing.T) {
-	scopes := []string{"calendar:calendar:read", "drive:drive:read"}
-
-	tests := []struct {
-		name       string
-		err        error
-		wantHint   bool
-		hintSubstr string
+	cases := []struct {
+		name string
+		err  error
 	}{
-		{
-			name: "permission type gets enhanced",
-			err: &output.ExitError{
-				Code:   1,
-				Detail: &output.ErrDetail{Type: "permission", Message: "no permission"},
-			},
-			wantHint:   true,
-			hintSubstr: "scope",
-		},
-		{
-			name: "mcp_error with unauthorized keyword gets enhanced",
-			err: &output.ExitError{
-				Code:   1,
-				Detail: &output.ErrDetail{Type: "mcp_error", Message: "request unauthorized by server"},
-			},
-			wantHint:   true,
-			hintSubstr: "scope",
-		},
-		{
-			name: "api_error without keyword not modified",
-			err: &output.ExitError{
-				Code:   1,
-				Detail: &output.ErrDetail{Type: "api_error", Message: "timeout"},
-			},
-			wantHint: false,
-		},
-		{
-			name:     "plain error not modified",
-			err:      fmt.Errorf("plain error"),
-			wantHint: false,
-		},
-		{
-			name: "nil Detail not modified",
-			err: &output.ExitError{
-				Code:   1,
-				Detail: nil,
-			},
-			wantHint: false,
-		},
+		{"api error with permission keyword", errs.NewAPIError(errs.SubtypeUnknown, "Permission denied for resource")},
+		{"api error with scope keyword", errs.NewAPIError(errs.SubtypeUnknown, "Insufficient scope for operation")},
+		{"network error", errs.NewNetworkError(errs.SubtypeNetworkTransport, "request unauthorized by server")},
+		{"plain error", fmt.Errorf("plain error")},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := enhancePermissionError(tt.err, scopes)
-
-			if !tt.wantHint {
-				// Should return original error unchanged
-				if got != tt.err {
-					t.Errorf("expected original error returned, got different error: %v", got)
-				}
-				return
-			}
-
-			// Should return an enhanced ExitError with a hint
-			var exitErr *output.ExitError
-			if !errors.As(got, &exitErr) {
-				t.Fatalf("expected ExitError, got %T: %v", got, got)
-			}
-			if exitErr.Detail == nil {
-				t.Fatal("expected Detail to be non-nil")
-			}
-			if exitErr.Detail.Hint == "" {
-				t.Fatal("expected non-empty hint")
-			}
-			if !strings.Contains(exitErr.Detail.Hint, tt.hintSubstr) {
-				t.Errorf("hint %q does not contain %q", exitErr.Detail.Hint, tt.hintSubstr)
-			}
-			// Verify the hint includes the actual scopes
-			for _, s := range scopes {
-				if !strings.Contains(exitErr.Detail.Hint, s) {
-					t.Errorf("hint %q does not contain scope %q", exitErr.Detail.Hint, s)
-				}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := enhancePermissionError(tc.err, scopes)
+			if got != tc.err {
+				t.Errorf("expected original error returned, got %T: %v", got, got)
 			}
 		})
+	}
+}
+
+// TestEnhancePermissionError_PermissionErrorGetsScopeHint pins that an
+// *errs.PermissionError is enhanced with a hint that names the required
+// scopes and the `auth login --scope ...` recovery action.
+func TestEnhancePermissionError_PermissionErrorGetsScopeHint(t *testing.T) {
+	scopes := []string{"calendar:calendar:read", "drive:drive:read"}
+	err := &errs.PermissionError{
+		Problem: errs.Problem{
+			Category: errs.CategoryAuthorization,
+			Subtype:  errs.SubtypeMissingScope,
+			Message:  "no permission",
+		},
+	}
+	got := enhancePermissionError(err, scopes)
+
+	var permErr *errs.PermissionError
+	if !errors.As(got, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", got, got)
+	}
+	if permErr.Hint == "" {
+		t.Fatal("expected non-empty hint")
+	}
+	if !strings.Contains(permErr.Hint, "scope") {
+		t.Errorf("hint %q does not mention scope", permErr.Hint)
+	}
+	for _, s := range scopes {
+		if !strings.Contains(permErr.Hint, s) {
+			t.Errorf("hint %q does not contain scope %q", permErr.Hint, s)
+		}
 	}
 }
 
@@ -186,6 +112,57 @@ func TestCheckShortcutScopes_PropagatesContextCancellation(t *testing.T) {
 	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, []string{"im:message:read"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("checkShortcutScopes() error = %v, want context.Canceled", err)
+	}
+}
+
+// TestCheckShortcutScopes_ReturnsTypedPermissionError pins that the local
+// precheck — when it finds the issued token is missing required scopes —
+// emits a typed *errs.PermissionError with Subtype MissingScope, the resolved
+// Identity, and the deterministic MissingScopes set. AI/script consumers
+// downstream rely on these structured fields instead of parsing the hint
+// string. The Hint still carries the actionable `auth login --scope ...`
+// command for human consumers.
+func TestCheckShortcutScopes_ReturnsTypedPermissionError(t *testing.T) {
+	f := &cmdutil.Factory{
+		Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{
+			result: &credential.TokenResult{Token: "t", Scopes: "im:message:read calendar:calendar:read"},
+		}, nil),
+	}
+
+	required := []string{"im:message:read", "drive:drive:read", "docx:document:read"}
+	err := checkShortcutScopes(f, context.Background(), core.AsUser, &core.CliConfig{AppID: "app-1"}, required)
+	if err == nil {
+		t.Fatal("expected error when token is missing required scopes, got nil")
+	}
+
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if permErr.Category != errs.CategoryAuthorization {
+		t.Errorf("Category = %q, want %q", permErr.Category, errs.CategoryAuthorization)
+	}
+	if permErr.Subtype != errs.SubtypeMissingScope {
+		t.Errorf("Subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
+	}
+	if permErr.Identity != string(core.AsUser) {
+		t.Errorf("Identity = %q, want %q", permErr.Identity, string(core.AsUser))
+	}
+	wantMissing := map[string]bool{"drive:drive:read": true, "docx:document:read": true}
+	for _, m := range permErr.MissingScopes {
+		if !wantMissing[m] {
+			t.Errorf("unexpected MissingScopes entry %q (granted scopes should not appear)", m)
+		}
+		delete(wantMissing, m)
+	}
+	if len(wantMissing) != 0 {
+		t.Errorf("MissingScopes %v did not include expected entries %v", permErr.MissingScopes, wantMissing)
+	}
+	if permErr.Hint == "" {
+		t.Error("Hint must carry the `auth login --scope ...` recovery action")
+	}
+	if !strings.Contains(permErr.Hint, "auth login") {
+		t.Errorf("Hint = %q, want it to mention `auth login`", permErr.Hint)
 	}
 }
 

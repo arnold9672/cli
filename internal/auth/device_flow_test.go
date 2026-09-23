@@ -5,23 +5,34 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 // TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
 func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandFeishu)
 	if ep.DeviceAuthorization != "https://accounts.feishu.cn/oauth/v1/device_authorization" {
 		t.Errorf("DeviceAuthorization = %q", ep.DeviceAuthorization)
+	}
+	if ep.Revoke != "https://accounts.feishu.cn/oauth/v1/revoke" {
+		t.Errorf("Revoke = %q", ep.Revoke)
 	}
 	if ep.Token != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
 		t.Errorf("Token = %q", ep.Token)
@@ -33,6 +44,9 @@ func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandLark)
 	if ep.DeviceAuthorization != "https://accounts.larksuite.com/oauth/v1/device_authorization" {
 		t.Errorf("DeviceAuthorization = %q", ep.DeviceAuthorization)
+	}
+	if ep.Revoke != "https://accounts.larksuite.com/oauth/v1/revoke" {
+		t.Errorf("Revoke = %q", ep.Revoke)
 	}
 	if ep.Token != "https://open.larksuite.com/open-apis/authen/v2/oauth/token" {
 		t.Errorf("Token = %q", ep.Token)
@@ -109,36 +123,6 @@ func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 	}
 }
 
-// TestRequestDeviceAuthorization_ClientSecretInBody checks that client_secret is sent in the form body.
-func TestRequestDeviceAuthorization_ClientSecretInBody(t *testing.T) {
-	reg := &httpmock.Registry{}
-	t.Cleanup(func() { reg.Verify(t) })
-
-	stub := &httpmock.Stub{
-		Method: "POST",
-		URL:    PathDeviceAuthorization,
-		Body: map[string]interface{}{
-			"device_code":               "dc",
-			"user_code":                 "uc",
-			"verification_uri":          "https://example.com/verify",
-			"verification_uri_complete": "https://example.com/verify?code=123",
-			"expires_in":                240,
-			"interval":                  5,
-		},
-	}
-	reg.Register(stub)
-
-	_, err := RequestDeviceAuthorization(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
-	if err != nil {
-		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
-	}
-
-	body := string(stub.CapturedBody)
-	if !strings.Contains(body, "client_secret=secret_b") {
-		t.Errorf("expected client_secret in form body, got %q", body)
-	}
-}
-
 // TestLogAuthResponse_IgnoresTypedNilHTTPResponse tests that a typed nil HTTP response is ignored gracefully.
 func TestLogAuthResponse_IgnoresTypedNilHTTPResponse(t *testing.T) {
 	var buf bytes.Buffer
@@ -200,5 +184,35 @@ func TestLogAuthError_RecordsStructuredEntry(t *testing.T) {
 	}
 	if !strings.Contains(got, "cmdline=lark-cli auth login ...") {
 		t.Fatalf("expected truncated cmdline in log, got %q", got)
+	}
+}
+
+func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       http.NoBody,
+			}, nil
+		}),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	t.Cleanup(cancel)
+
+	result := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	if result == nil {
+		t.Fatal("PollDeviceToken() returned nil result")
+	}
+	if result.Message != "Polling was cancelled" {
+		t.Fatalf("PollDeviceToken() message = %q, want polling cancellation", result.Message)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("PollDeviceToken() sent %d requests before context cancellation, want 0", got)
 	}
 }

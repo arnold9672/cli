@@ -7,8 +7,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseFormCreate = common.Shortcut{
@@ -24,6 +24,9 @@ var BaseFormCreate = common.Shortcut{
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "name", Desc: "form name", Required: true},
 		{Name: "description", Desc: `form description (plain text or markdown link like [text](https://example.com))`},
+	},
+	Tips: []string{
+		"Record the returned form_id; form question create/list/update/delete commands need it.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

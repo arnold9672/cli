@@ -6,18 +6,30 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseRecordDelete = common.Shortcut{
 	Service:     "base",
 	Command:     "+record-delete",
-	Description: "Delete a record by ID",
+	Description: "Delete one or more records by ID",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"base:record:delete"},
 	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), recordRefFlag(true)},
-	DryRun:      dryRunRecordDelete,
+	Flags: []common.Flag{
+		baseTokenFlag(true),
+		tableRefFlag(true),
+		{Name: "record-id", Type: "string_array", Desc: "record ID (repeatable)"},
+		{Name: "json", Desc: `JSON object with record_id_list, e.g. {"record_id_list":["rec_xxx"]}`},
+	},
+	Tips: []string{
+		baseHighRiskYesTip,
+		`Example: lark-cli base +record-delete --base-token <base_token> --table-id <table_id> --record-id <record_id_1> --record-id <record_id_2> --yes`,
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateRecordSelection(runtime)
+	},
+	DryRun: dryRunRecordDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeRecordDelete(runtime)
 	},

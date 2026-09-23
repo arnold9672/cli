@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
-	shortcutTypes "github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/registry"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts"
+	shortcutTypes "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // ── Data types ────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ func diagBuild(domains []string) diagOutput {
 				if sc.Service != domain || !diagShortcutSupportsIdentity(&sc, identity) {
 					continue
 				}
-				for _, scope := range sc.ScopesForIdentity(identity) {
+				for _, scope := range sc.DeclaredScopesForIdentity(identity) {
 					k := methodKey{domain, "shortcut", sc.Command, scope}
 					if e, ok := merged[k]; ok {
 						e.Identity = appendUniq(e.Identity, identity)
@@ -167,6 +167,25 @@ func appendUniq(ss []string, s string) []string {
 		}
 	}
 	return append(ss, s)
+}
+
+func TestDiagBuild_ShortcutIncludesConditionalScopes(t *testing.T) {
+	out := diagBuild([]string{"drive"})
+	var sawMetadata, sawDownload bool
+	for _, method := range out.Methods {
+		if method.Domain != "drive" || method.Type != "shortcut" || method.Method != "+status" {
+			continue
+		}
+		if method.Scope == "drive:drive.metadata:readonly" {
+			sawMetadata = true
+		}
+		if method.Scope == "drive:file:download" {
+			sawDownload = true
+		}
+	}
+	if !sawMetadata || !sawDownload {
+		t.Fatalf("drive +status should advertise both metadata and conditional download scopes, saw metadata=%v download=%v", sawMetadata, sawDownload)
+	}
 }
 
 // ── Snapshot generation ───────────────────────────────────────────────

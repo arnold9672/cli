@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/charcheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/charcheck"
 )
 
 // RejectControlChars rejects C0 control characters (except \t and \n) and

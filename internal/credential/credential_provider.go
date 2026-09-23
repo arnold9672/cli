@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"sync"
 
-	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
 )
 
 // DefaultAccountResolver is implemented by the default account provider.
@@ -203,7 +203,7 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
 		return acct, nil
 	}
-	return nil, fmt.Errorf("no credential provider returned an account; run 'lark-cli config' to set up")
+	return nil, core.NotConfiguredError()
 }
 
 // enrichUserInfo resolves user identity when extension provides a UAT.
@@ -329,6 +329,43 @@ func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*
 		return result, nil
 	}
 	return nil, &TokenUnavailableError{Type: req.Type}
+}
+
+// ActiveExtensionProviderName reports whether an extension provider is managing
+// credentials. It probes p.providers (extension providers only, not defaultAcct)
+// and returns the name of the first engaged provider.
+//
+// "Engaged" means: ResolveAccount returns a non-nil account, OR returns a
+// *extcred.BlockError (provider configured but misconfigured — still counts as
+// external). Any other error is propagated to the caller.
+//
+// Returns ("", nil) when no extension provider is active (built-in keychain path).
+// Safe to call multiple times — probes providers directly without the sync.Once cache.
+func (p *CredentialProvider) ActiveExtensionProviderName(ctx context.Context) (string, error) {
+	for _, prov := range p.providers {
+		acct, err := prov.ResolveAccount(ctx)
+		if err != nil {
+			var blockErr *extcred.BlockError
+			if errors.As(err, &blockErr) {
+				name := blockErr.Provider
+				if name == "" {
+					name = prov.Name()
+				}
+				if name == "" {
+					name = "external"
+				}
+				return name, nil
+			}
+			return "", err
+		}
+		if acct != nil {
+			if name := prov.Name(); name != "" {
+				return name, nil
+			}
+			return "external", nil
+		}
+	}
+	return "", nil
 }
 
 func convertAccount(ext *extcred.Account) *Account {

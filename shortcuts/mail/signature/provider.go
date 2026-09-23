@@ -5,10 +5,11 @@ package signature
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/url"
+	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 // processCache holds per-mailbox cached responses.
@@ -27,19 +28,19 @@ func ListAll(runtime *common.RuntimeContext, mailboxID string) (*GetSignaturesRe
 		return cached, nil
 	}
 
-	data, err := runtime.CallAPI("GET", signaturesPath(mailboxID), nil, nil)
+	data, err := runtime.CallAPITyped("GET", signaturesPath(mailboxID), nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("get signatures: %w", err)
+		return nil, err
 	}
 
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("get signatures: marshal response: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "get signatures: marshal response: %v", err).WithCause(err)
 	}
 
 	var resp GetSignaturesResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("get signatures: unmarshal response: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "get signatures: unmarshal response: %v", err).WithCause(err)
 	}
 
 	processCache[mailboxID] = &resp
@@ -55,6 +56,33 @@ func List(runtime *common.RuntimeContext, mailboxID string) ([]Signature, error)
 	return resp.Signatures, nil
 }
 
+// DefaultSendID returns the default send-mail signature ID for the given
+// sender email address. Returns "" if no default is configured.
+// "0" and empty string are treated as "no default" (API convention).
+func DefaultSendID(usages []SignatureUsage, emailAddr string) string {
+	for _, u := range usages {
+		if strings.EqualFold(u.EmailAddress, emailAddr) {
+			if u.SendMailSignatureID != "" && u.SendMailSignatureID != "0" {
+				return u.SendMailSignatureID
+			}
+		}
+	}
+	return ""
+}
+
+// DefaultReplyID returns the default reply/forward signature ID for the given
+// sender email address. Returns "" if no default is configured.
+func DefaultReplyID(usages []SignatureUsage, emailAddr string) string {
+	for _, u := range usages {
+		if strings.EqualFold(u.EmailAddress, emailAddr) {
+			if u.ReplySignatureID != "" && u.ReplySignatureID != "0" {
+				return u.ReplySignatureID
+			}
+		}
+	}
+	return ""
+}
+
 // Get returns a single signature by ID. Returns an error if not found.
 func Get(runtime *common.RuntimeContext, mailboxID, signatureID string) (*Signature, error) {
 	resp, err := ListAll(runtime, mailboxID)
@@ -66,5 +94,5 @@ func Get(runtime *common.RuntimeContext, mailboxID, signatureID string) (*Signat
 			return &resp.Signatures[i], nil
 		}
 	}
-	return nil, fmt.Errorf("signature not found: %s", signatureID)
+	return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "signature not found: %s", signatureID)
 }

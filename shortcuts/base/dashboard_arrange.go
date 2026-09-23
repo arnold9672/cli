@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseDashboardArrange = common.Shortcut{
@@ -21,6 +21,9 @@ var BaseDashboardArrange = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
+	},
+	Tips: []string{
+		"Server-side smart layout is not deterministic or position-specific; use only when the user asks to arrange or beautify a dashboard.",
 	},
 	DryRun: dryRunDashboardArrange,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

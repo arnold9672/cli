@@ -6,130 +6,90 @@ package output
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+
+	"code.byted.org/lark_search/larksuite-cli/errs"
 )
 
-// ExitError is a structured error that carries an exit code and optional detail.
-// It is propagated up the call chain and handled by main.go to produce
-// a JSON error envelope on stderr and the correct exit code.
-type ExitError struct {
-	Code   int
-	Detail *ErrDetail
-	Err    error
-	Raw    bool // when true, skip enrichment (e.g. enrichPermissionError) and preserve original error
+// PartialFailureError is the exit signal for a batch / multi-status command that
+// has already written an ok:false result envelope to stdout. The per-item
+// outcomes are the primary, machine-readable output and live on stdout, so the
+// dispatcher sets only the exit code and writes nothing to stderr.
+//
+// It is deliberately distinct from ErrBare (the stdout-carries-the-answer
+// silent-exit signal) so that contract stays narrow, and from a typed *errs.XxxError
+// (which owns the stderr error envelope): a partial failure is a result, not an
+// error envelope.
+type PartialFailureError struct {
+	Code int
 }
 
-func (e *ExitError) Error() string {
-	if e.Detail != nil {
-		return e.Detail.Message
-	}
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return fmt.Sprintf("exit %d", e.Code)
+func (e *PartialFailureError) Error() string {
+	return fmt.Sprintf("partial failure (exit %d)", e.Code)
 }
 
-func (e *ExitError) Unwrap() error {
-	return e.Err
+// PartialFailure builds the partial-failure exit signal with the given code.
+func PartialFailure(code int) *PartialFailureError {
+	return &PartialFailureError{Code: code}
 }
 
-// WriteErrorEnvelope writes a JSON error envelope for the given ExitError to w.
-func WriteErrorEnvelope(w io.Writer, err *ExitError, identity string) {
-	if err.Detail == nil {
-		return
+// WriteTypedErrorEnvelope writes the JSON error envelope for a typed error.
+// Each typed error owns its wire shape via its own struct tags: Problem fields
+// are promoted to the top level through embedding, and extension fields
+// (MissingScopes, ChallengeURL, etc.) sit alongside as siblings — not inside
+// a `detail` sub-object.
+//
+// Two-stage write:
+//
+//  1. Serialize the envelope into an in-memory buffer. If serialization
+//     fails, return false so the dispatcher handles it via its signal /
+//     usage-error branches; nothing is written to w.
+//  2. Best-effort write of the serialized bytes to w. A partial write is
+//     accepted (return value still true): the typed exit code has already
+//     been determined upstream by handleRootError calling ExitCodeOf(err)
+//     before this writer runs, so a torn envelope on stderr must not
+//     downgrade the caller's typed exit (3/4/6/10) to plain 1. Consumers
+//     parse-or-skip on malformed JSON.
+//
+// Returns true when err was a typed error and serialization succeeded.
+// Returns false only when err carries no Problem (the dispatcher then handles
+// it via its signal / usage-error branches) or when JSON encoding itself failed.
+func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
+	typed, ok := errs.UnwrapTypedError(err)
+	if !ok {
+		return false
 	}
-	env := &ErrorEnvelope{
+	env := typedEnvelope{
 		OK:       false,
 		Identity: identity,
-		Error:    err.Detail,
+		Error:    typed,
 		Notice:   GetNotice(),
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(env); err != nil {
-		return
+	if encErr := enc.Encode(env); encErr != nil {
+		// Encoding failed — emit nothing here; the dispatcher's fall-through
+		// branches still surface the error, so stderr is never blank.
+		return false
 	}
-	// Encode appends a trailing newline; write directly.
-	buf.WriteTo(w)
+	// Best-effort write. Partial-write does not downgrade the success status:
+	// the dispatcher has already captured ExitCodeOf(err) before calling us,
+	// and a torn stderr is preferable to falling through to the plain
+	// "Error:" path with exit 1.
+	_, _ = w.Write(buf.Bytes())
+	return true
 }
 
-// --- Convenience constructors ---
-
-// Errorf creates an ExitError with the given code, type, and formatted message.
-func Errorf(code int, errType, format string, args ...any) *ExitError {
-	var err error
-	for _, arg := range args {
-		if e, ok := arg.(error); ok {
-			err = e
-			break
-		}
-	}
-	return &ExitError{
-		Code:   code,
-		Detail: &ErrDetail{Type: errType, Message: fmt.Sprintf(format, args...)},
-		Err:    err,
-	}
-}
-
-// ErrValidation creates a validation ExitError (exit 2).
-func ErrValidation(format string, args ...any) *ExitError {
-	return Errorf(ExitValidation, "validation", format, args...)
-}
-
-// ErrAuth creates an auth ExitError (exit 3).
-func ErrAuth(format string, args ...any) *ExitError {
-	return Errorf(ExitAuth, "auth", format, args...)
-}
-
-// ErrNetwork creates a network ExitError (exit 4).
-func ErrNetwork(format string, args ...any) *ExitError {
-	return Errorf(ExitNetwork, "network", format, args...)
-}
-
-// ErrAPI creates an API ExitError using ClassifyLarkError.
-// For permission errors, uses a concise message; the raw API response is preserved in Detail.
-func ErrAPI(larkCode int, msg string, detail any) *ExitError {
-	exitCode, errType, hint := ClassifyLarkError(larkCode, msg)
-	if errType == "permission" {
-		msg = fmt.Sprintf("Permission denied [%d]", larkCode)
-	}
-	return &ExitError{
-		Code: exitCode,
-		Detail: &ErrDetail{
-			Type:    errType,
-			Code:    larkCode,
-			Message: msg,
-			Hint:    hint,
-			Detail:  detail,
-		},
-	}
-}
-
-// ErrWithHint creates an ExitError with a hint string.
-func ErrWithHint(code int, errType, msg, hint string) *ExitError {
-	return &ExitError{
-		Code:   code,
-		Detail: &ErrDetail{Type: errType, Message: msg, Hint: hint},
-	}
-}
-
-// ErrBare creates an ExitError with only an exit code and no envelope.
-// Used for cases like `auth check` where the JSON output is already written to stdout.
-func ErrBare(code int) *ExitError {
-	return &ExitError{Code: code}
-}
-
-// MarkRaw sets Raw=true on an ExitError so that enrichment (e.g. enrichPermissionError)
-// is skipped and the original API error is preserved. Returns the original error unchanged
-// if it is not an ExitError.
-func MarkRaw(err error) error {
-	var exitErr *ExitError
-	if errors.As(err, &exitErr) {
-		exitErr.Raw = true
-	}
-	return err
+// typedEnvelope wraps a typed error for wire emission. Error is `error` so the
+// underlying typed error's own json tags determine the inner shape via
+// encoding/json reflection; Notice mirrors the success Envelope's notice (see
+// GetNotice in envelope.go).
+type typedEnvelope struct {
+	OK       bool                   `json:"ok"`
+	Identity string                 `json:"identity,omitempty"`
+	Error    error                  `json:"error"`
+	Notice   map[string]interface{} `json:"_notice,omitempty"`
 }

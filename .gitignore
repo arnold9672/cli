@@ -1,11 +1,16 @@
 # Build output
-/lark-cli
+/lark-cli*
 .cache/
 dist/
 bin/
 
 # Node
 node_modules/
+
+# Python (skill-bundled helper scripts)
+__pycache__/
+*.py[cod]
+*$py.class
 
 
 # OS
@@ -33,6 +38,17 @@ tests/mail/reports/
 
 
 # Generated / test artifacts
+.hammer/
+.lark-slides/
+/notes/
+/minutes/
 internal/registry/meta_data.json
 cmd/api/download.bin
 app.log
+/sidecar-server-demo
+/server-demo
+.tmp/
+cover*.out
+
+lark-env.sh
+/automations/

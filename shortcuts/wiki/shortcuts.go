@@ -3,12 +3,22 @@
 
 package wiki
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // Shortcuts returns all wiki shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		WikiMove,
 		WikiNodeCreate,
+		WikiDeleteSpace,
+		WikiSpaceList,
+		WikiSpaceCreate,
+		WikiNodeList,
+		WikiNodeCopy,
+		WikiNodeGet,
+		WikiNodeDelete,
+		WikiMemberAdd,
+		WikiMemberRemove,
+		WikiMemberList,
 	}
 }

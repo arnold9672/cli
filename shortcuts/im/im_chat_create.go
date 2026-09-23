@@ -10,16 +10,21 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+// ImChatCreate is the +chat-create shortcut: creates a group chat or topic
+// chat via POST /open-apis/im/v1/chats. Supports user and bot identities;
+// --chat-mode selects group (default) or topic; --type selects private
+// (default) or public; --users/--bots invite members at creation.
 var ImChatCreate = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-create",
-	Description: "Create a group chat; user/bot; creates private/public chats, invites users/bots, optionally sets bot manager",
+	Description: "Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager",
 	Risk:        "write",
 	UserScopes:  []string{"im:chat:create_by_user"},
 	BotScopes:   []string{"im:chat:create"},
@@ -32,6 +37,7 @@ var ImChatCreate = common.Shortcut{
 		{Name: "bots", Desc: "comma-separated bot app IDs (cli_xxx) to invite, max 5"},
 		{Name: "owner", Desc: "owner open_id (ou_xxx); defaults to bot (--as bot) or authorized user (--as user)"},
 		{Name: "type", Default: "private", Desc: "chat type", Enum: []string{"private", "public"}},
+		{Name: "chat-mode", Default: "group", Desc: "group mode (\"topic\" creates a topic chat; differs from a normal group in topic-message mode)", Enum: []string{"group", "topic"}},
 		{Name: "set-bot-manager", Type: "bool", Desc: "set the bot that creates this chat as manager (bot identity only)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -47,7 +53,7 @@ var ImChatCreate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Bool("set-bot-manager") && !runtime.IsBot() {
-			return output.ErrValidation("--set-bot-manager is only supported with bot identity (--as bot)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--set-bot-manager is only supported with bot identity (--as bot)").WithParam("--set-bot-manager")
 		}
 
 		name := runtime.Str("name")
@@ -55,25 +61,25 @@ var ImChatCreate = common.Shortcut{
 
 		// Public groups must have a name with at least 2 characters.
 		if chatType == "public" && len([]rune(name)) < 2 {
-			return output.ErrValidation("--name is required for public groups and must be at least 2 characters")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name is required for public groups and must be at least 2 characters").WithParam("--name")
 		}
 		// Group name length must not exceed 60 characters.
 		if len([]rune(name)) > 60 {
-			return output.ErrValidation("--name exceeds the maximum of 60 characters (got %d)", len([]rune(name)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name exceeds the maximum of 60 characters (got %d)", len([]rune(name))).WithParam("--name")
 		}
 		// Description length must not exceed 100 characters.
 		if desc := runtime.Str("description"); len([]rune(desc)) > 100 {
-			return output.ErrValidation("--description exceeds the maximum of 100 characters (got %d)", len([]rune(desc)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--description exceeds the maximum of 100 characters (got %d)", len([]rune(desc))).WithParam("--description")
 		}
 
 		// Validate users.
 		if users := runtime.Str("users"); users != "" {
 			ids := common.SplitCSV(users)
 			if len(ids) > 50 {
-				return output.ErrValidation("--users exceeds the maximum of 50 (got %d)", len(ids))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--users exceeds the maximum of 50 (got %d)", len(ids)).WithParam("--users")
 			}
 			for _, id := range ids {
-				if _, err := common.ValidateUserID(id); err != nil {
+				if _, err := common.ValidateUserIDTyped("--users", id); err != nil {
 					return err
 				}
 			}
@@ -83,18 +89,18 @@ var ImChatCreate = common.Shortcut{
 		if bots := runtime.Str("bots"); bots != "" {
 			ids := common.SplitCSV(bots)
 			if len(ids) > 5 {
-				return output.ErrValidation("--bots exceeds the maximum of 5 (got %d)", len(ids))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--bots exceeds the maximum of 5 (got %d)", len(ids)).WithParam("--bots")
 			}
 			for _, id := range ids {
 				if !strings.HasPrefix(id, "cli_") {
-					return output.ErrValidation("invalid bot id %q: expected app ID (cli_xxx)", id)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid bot id %q: expected app ID (cli_xxx)", id).WithParam("--bots")
 				}
 			}
 		}
 
 		// Validate owner.
 		if owner := runtime.Str("owner"); owner != "" {
-			if _, err := common.ValidateUserID(owner); err != nil {
+			if _, err := common.ValidateUserIDTyped("--owner", owner); err != nil {
 				return err
 			}
 		}
@@ -107,7 +113,7 @@ var ImChatCreate = common.Shortcut{
 		if runtime.Bool("set-bot-manager") {
 			qp["set_bot_manager"] = []string{"true"}
 		}
-		resData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/chats", qp, body)
+		resData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/chats", qp, body)
 		if err != nil {
 			return err
 		}
@@ -122,7 +128,7 @@ var ImChatCreate = common.Shortcut{
 
 		// Try to fetch the group share link without blocking on failure.
 		if chatID, ok := resData["chat_id"].(string); ok && chatID != "" {
-			linkData, err := runtime.DoAPIJSON(http.MethodPost,
+			linkData, err := runtime.DoAPIJSONTyped(http.MethodPost,
 				fmt.Sprintf("/open-apis/im/v1/chats/%s/link", validate.EncodePathSegment(chatID)),
 				nil, nil)
 			if err == nil {
@@ -141,9 +147,18 @@ var ImChatCreate = common.Shortcut{
 	},
 }
 
+// buildCreateChatBody assembles the POST /open-apis/im/v1/chats request
+// body. chat_mode is always emitted; an empty value (which can slip past
+// validateEnumFlags, since that helper skips empty strings) is pinned to
+// "group" so the wire never carries an unspecified chat_mode value.
 func buildCreateChatBody(runtime *common.RuntimeContext) map[string]interface{} {
+	chatMode := runtime.Str("chat-mode")
+	if chatMode == "" {
+		chatMode = "group"
+	}
 	body := map[string]interface{}{
 		"chat_type": runtime.Str("type"),
+		"chat_mode": chatMode,
 	}
 	if name := runtime.Str("name"); name != "" {
 		body["name"] = name

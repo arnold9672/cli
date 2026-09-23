@@ -5,16 +5,14 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var FollowersTask = common.Shortcut{
@@ -28,14 +26,14 @@ var FollowersTask = common.Shortcut{
 
 	Flags: []common.Flag{
 		{Name: "task-id", Desc: "task id", Required: true},
-		{Name: "add", Desc: "comma-separated open_ids to add as followers"},
-		{Name: "remove", Desc: "comma-separated open_ids to remove from followers"},
+		{Name: "add", Desc: "comma-separated follower IDs to add; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
+		{Name: "remove", Desc: "comma-separated follower IDs to remove; use open_id (ou_xxx) when follower is user, use app id (cli_xxx) when follower is app"},
 		{Name: "idempotency-key", Desc: "client token for idempotency (used for add_members)"},
 	},
 
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Str("add") == "" && runtime.Str("remove") == "" {
-			return WrapTaskError(ErrCodeTaskInvalidParams, "must specify either --add or --remove", "validate followers")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "must specify either --add or --remove")
 		}
 		return nil
 	},
@@ -63,28 +61,13 @@ var FollowersTask = common.Shortcut{
 
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		taskId := url.PathEscape(runtime.Str("task-id"))
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
 		var lastData map[string]interface{}
 
 		if addStr := runtime.Str("add"); addStr != "" {
 			body := buildFollowersBody(addStr, runtime.Str("idempotency-key"))
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodPost,
-				ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/add_members",
-				QueryParams: queryParams,
-				Body:        body,
-			})
-
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse add followers")
-				}
-			}
-
-			data, err := HandleTaskApiResult(result, err, "add task followers")
+			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+taskId+"/add_members", params, body)
 			if err != nil {
 				return err
 			}
@@ -93,21 +76,7 @@ var FollowersTask = common.Shortcut{
 
 		if removeStr := runtime.Str("remove"); removeStr != "" {
 			body := buildFollowersBody(removeStr, "")
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodPost,
-				ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/remove_members",
-				QueryParams: queryParams,
-				Body:        body,
-			})
-
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse remove followers")
-				}
-			}
-
-			data, err := HandleTaskApiResult(result, err, "remove task followers")
+			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+taskId+"/remove_members", params, body)
 			if err != nil {
 				return err
 			}
@@ -144,11 +113,7 @@ func buildFollowersBody(idsStr string, clientToken string) map[string]interface{
 		if id == "" {
 			continue
 		}
-		members = append(members, map[string]interface{}{
-			"id":   id,
-			"role": "follower",
-			"type": "user",
-		})
+		members = append(members, buildTaskMember(id, "follower"))
 	}
 
 	body := map[string]interface{}{

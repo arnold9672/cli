@@ -1,0 +1,7 @@
+interface:
+  display_name: "memory-graph-search"
+  short_description: "Preserve the QA baseline and add useful graph evidence"
+  default_prompt: "Use $memory-graph-search to preserve the Knowledge QA answer baseline, add only relevant node and edge evidence, and continue OneHop only when the current evidence is relevant but the answer remains materially incomplete."
+
+policy:
+  allow_implicit_invocation: true

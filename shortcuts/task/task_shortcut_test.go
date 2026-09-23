@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func taskTestConfig(t *testing.T) *core.CliConfig {
@@ -45,7 +45,7 @@ func warmTenantToken(t *testing.T, f *cmdutil.Factory, reg *httpmock.Registry) {
 		Command:   "+warm-token",
 		AuthTypes: []string{"bot"},
 		Execute: func(_ context.Context, rctx *common.RuntimeContext) error {
-			_, err := rctx.CallAPI("GET", "/open-apis/test/v1/warm", nil, nil)
+			_, err := rctx.CallAPITyped("GET", "/open-apis/test/v1/warm", nil, nil)
 			return err
 		},
 	}

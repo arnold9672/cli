@@ -9,9 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // NewCmdProfileRename creates the profile rename subcommand.
@@ -24,22 +25,23 @@ func NewCmdProfileRename(f *cmdutil.Factory) *cobra.Command {
 			return profileRenameRun(f, args[0], args[1])
 		},
 	}
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 
 func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 	if err := core.ValidateProfileName(newName); err != nil {
-		return output.ErrValidation("%v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithCause(err)
 	}
 
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := core.LoadOrNotConfigured()
 	if err != nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return err
 	}
 
 	idx := multi.FindAppIndex(oldName)
 	if idx < 0 {
-		return output.ErrValidation("profile %q not found, available profiles: %s", oldName, strings.Join(multi.ProfileNames(), ", "))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "profile %q not found, available profiles: %s", oldName, strings.Join(multi.ProfileNames(), ", "))
 	}
 
 	// Check new name uniqueness across other profiles, allowing renames to this
@@ -49,7 +51,8 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 			continue
 		}
 		if multi.Apps[i].Name == newName || multi.Apps[i].AppId == newName {
-			return output.ErrValidation("profile %q already exists", newName)
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "profile %q already exists", newName).
+				WithHint("choose a different name")
 		}
 	}
 
@@ -65,7 +68,7 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Profile renamed: %q -> %q", oldProfileName, newName))

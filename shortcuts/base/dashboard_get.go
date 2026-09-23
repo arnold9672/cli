@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseDashboardGet = common.Shortcut{
@@ -20,6 +20,9 @@ var BaseDashboardGet = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
+	},
+	Tips: []string{
+		"Use +dashboard-block-list or +dashboard-block-get when you need block-level details.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	clie2e "code.byted.org/lark_search/larksuite-cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -27,38 +27,41 @@ func TestIM_ChatUpdateWorkflow(t *testing.T) {
 
 	chatID := createChat(t, parentT, ctx, originalName)
 
-	t.Run("update chat name", func(t *testing.T) {
+	t.Run("update chat name as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"im", "+chat-update",
 				"--chat-id", chatID,
 				"--name", updatedName,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("update chat description", func(t *testing.T) {
+	t.Run("update chat description as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{"im", "+chat-update",
 				"--chat-id", chatID,
 				"--description", updatedDescription,
 			},
+			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("get updated chat", func(t *testing.T) {
+	t.Run("get updated chat as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"im", "chats", "get"},
-			Params: map[string]any{"chat_id": chatID},
+			Args:      []string{"im", "chats", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"chat_id": chatID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, updatedName, gjson.Get(result.Stdout, "data.name").String())
 		assert.Equal(t, updatedDescription, gjson.Get(result.Stdout, "data.description").String())
@@ -76,15 +79,16 @@ func TestIM_ChatsGetWorkflow(t *testing.T) {
 
 	chatID := createChat(t, parentT, ctx, chatName)
 
-	t.Run("get chat info", func(t *testing.T) {
+	t.Run("get chat info as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"im", "chats", "get"},
-			Params: map[string]any{"chat_id": chatID},
+			Args:      []string{"im", "chats", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"chat_id": chatID},
 		})
 		require.NoError(t, err)
 		t.Logf("chats get result: %s", result.Stdout)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		dataExists := gjson.Get(result.Stdout, "data").Exists()
 		require.True(t, dataExists, "data object should exist")
@@ -105,17 +109,18 @@ func TestIM_ChatsLinkWorkflow(t *testing.T) {
 
 	chatID := createChat(t, parentT, ctx, chatName)
 
-	t.Run("get chat share link", func(t *testing.T) {
+	t.Run("get chat share link as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"im", "chats", "link"},
-			Params: map[string]any{"chat_id": chatID},
+			Args:      []string{"im", "chats", "link"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"chat_id": chatID},
 			Data: map[string]any{
 				"validity_period": "week",
 			},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		shareLink := gjson.Get(result.Stdout, "data.share_link").String()
 		require.NotEmpty(t, shareLink, "share_link should not be empty")

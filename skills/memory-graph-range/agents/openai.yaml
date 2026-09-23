@@ -1,0 +1,7 @@
+interface:
+  display_name: "memory-graph-range"
+  short_description: "Query my Memory Graph within an explicit time range"
+  default_prompt: "Use $memory-graph-range to query my Memory Graph for the last 24 hours."
+
+policy:
+  allow_implicit_invocation: true

@@ -3,7 +3,7 @@
 
 package drive
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // Shortcuts returns all drive shortcuts.
 func Shortcuts() []common.Shortcut {
@@ -12,12 +12,28 @@ func Shortcuts() []common.Shortcut {
 		DriveCreateFolder,
 		DriveCreateShortcut,
 		DriveDownload,
+		DrivePreview,
+		DriveCover,
 		DriveAddComment,
 		DriveExport,
 		DriveExportDownload,
 		DriveImport,
+		DriveVersionHistory,
+		DriveVersionGet,
+		DriveVersionRevert,
+		DriveVersionDelete,
 		DriveMove,
 		DriveDelete,
+		DriveStatus,
+		DrivePush,
+		DrivePull,
+		DriveSync,
 		DriveTaskResult,
+		DriveApplyPermission,
+		DriveMemberAdd,
+		DriveSecureLabelList,
+		DriveSecureLabelUpdate,
+		DriveSearch,
+		DriveInspect,
 	}
 }

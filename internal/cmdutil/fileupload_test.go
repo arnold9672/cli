@@ -5,13 +5,48 @@ package cmdutil
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
+
+// failingReader always errors on Read, to exercise stdin read-failure paths.
+type failingReader struct{ err error }
+
+func (r *failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+// requireFileValidationError asserts err is a typed *errs.ValidationError with
+// the expected subtype, exit code 2 (legacy ErrValidation parity), and a
+// param diagnostic referencing --file (either Param or one of Params).
+func requireFileValidationError(t *testing.T, err error, wantSubtype errs.Subtype) *errs.ValidationError {
+	t.Helper()
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if valErr.Subtype != wantSubtype {
+		t.Errorf("subtype = %q, want %q", valErr.Subtype, wantSubtype)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation, legacy parity)", got, output.ExitValidation)
+	}
+	mentionsFile := valErr.Param == "--file"
+	for _, p := range valErr.Params {
+		if p.Name == "--file" {
+			mentionsFile = true
+		}
+	}
+	if !mentionsFile {
+		t.Errorf("expected --file in Param/Params, got Param=%q Params=%v", valErr.Param, valErr.Params)
+	}
+	return valErr
+}
 
 func TestParseFileFlag(t *testing.T) {
 	tests := []struct {
@@ -222,6 +257,7 @@ func TestValidateFileFlag(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error = %q, want containing %q", err.Error(), tt.wantErr)
 			}
+			requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
 		})
 	}
 }
@@ -248,6 +284,19 @@ func TestBuildFormdata(t *testing.T) {
 		if !strings.Contains(err.Error(), "stdin is not available") {
 			t.Errorf("error = %q, want containing %q", err.Error(), "stdin is not available")
 		}
+		requireFileValidationError(t, err, errs.SubtypeFailedPrecondition)
+	})
+
+	t.Run("stdin read failure", func(t *testing.T) {
+		readErr := errors.New("pipe closed")
+		_, err := BuildFormdata(fio, "file", "", true, &failingReader{err: readErr}, nil)
+		if err == nil {
+			t.Fatal("expected error for failing stdin reader")
+		}
+		requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
+		if !errors.Is(err, readErr) {
+			t.Error("underlying read error not reachable via errors.Is; WithCause missing")
+		}
 	})
 
 	t.Run("stdin empty", func(t *testing.T) {
@@ -259,6 +308,7 @@ func TestBuildFormdata(t *testing.T) {
 		if !strings.Contains(err.Error(), "stdin is empty") {
 			t.Errorf("error = %q, want containing %q", err.Error(), "stdin is empty")
 		}
+		requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
 	})
 
 	t.Run("file open success", func(t *testing.T) {
@@ -288,6 +338,10 @@ func TestBuildFormdata(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "cannot open file:") {
 			t.Errorf("error = %q, want containing %q", err.Error(), "cannot open file:")
+		}
+		valErr := requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
+		if valErr.Cause == nil {
+			t.Error("expected the os open error attached as Cause")
 		}
 	})
 
@@ -335,4 +389,41 @@ func TestBuildFormdata(t *testing.T) {
 			t.Fatal("expected non-nil Formdata")
 		}
 	})
+}
+
+// TestFormatFormFieldValue locks in the fix for the float64 -> scientific
+// notation bug. JSON numbers unmarshal to float64, and fmt's default %v for
+// float64 delegates to %g which switches to scientific notation at ~1e6
+// (e.g. 1185356 -> "1.185356e+06"). Backends that parse the form field as an
+// integer reject that, surfacing as a generic "params error".
+func TestFormatFormFieldValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   any
+		want string
+	}{
+		{"float64 large integer avoids scientific", float64(1185356), "1185356"},
+		{"float64 below scientific threshold", float64(358934), "358934"},
+		{"float64 zero", float64(0), "0"},
+		{"float64 huge", float64(20 * 1024 * 1024), "20971520"},
+		{"float64 negative", float64(-42), "-42"},
+		{"float64 fractional preserved", float64(3.14), "3.14"},
+		{"string pass-through", "hello", "hello"},
+		{"bool true", true, "true"},
+		{"int via %v", 42, "42"},
+		{"int64 via %v", int64(9007199254740992), "9007199254740992"},
+	}
+
+	for _, temp := range tests {
+		tt := temp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatFormFieldValue(tt.in)
+			if got != tt.want {
+				t.Fatalf("formatFormFieldValue(%v) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
 }

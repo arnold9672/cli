@@ -5,7 +5,7 @@
 //
 // Three mutually exclusive input modes (only one allowed per invocation):
 //   meeting-ids:        meeting.get → note_id → note detail API
-//   minute-tokens:      minutes API → note detail + AI artifacts + transcript
+//   minute-tokens:      minutes API → note detail + AI artifacts (transcript inlined)
 //   calendar-event-ids: primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note_id
 
 package vc
@@ -13,49 +13,68 @@ package vc
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/note"
 )
 
 // per-flag additional scope requirements for +notes (vc:note:read is checked by framework)
 var (
 	scopesMeetingIDs = []string{
 		"vc:meeting.meetingevent:read",
+		"vc:note:read",
+		"vc:record:readonly",
 	}
 	scopesMinuteTokens = []string{
 		"minutes:minutes:readonly",
 		"minutes:minutes.artifacts:read",
-		"minutes:minutes.transcript:export",
 	}
 	scopesCalendarEventIDs = []string{
 		"calendar:calendar:read",
 		"calendar:calendar.event:read",
 		"vc:meeting.meetingevent:read",
+		"vc:record:readonly",
 	}
 )
 
-// artifact type enum from note detail API
+const logPrefix = "[vc +notes]"
+
 const (
-	artifactTypeMainDoc  = 1 // main note document
-	artifactTypeVerbatim = 2 // verbatim transcript
+	minutesNoReadPermissionCode = 2091005
+
+	// recording API specific error codes (used to surface meeting minute_token state).
+	recordingNotFoundCode     = 121004 // 该会议没有妙记文件
+	recordingNoPermissionCode = 121005 // 非会议参与者无权查看
+	recordingGeneratingCode   = 124002 // 录制/妙记文件仍在生成中
 )
 
-const logPrefix = "[vc +notes]"
+func minutesReadError(err error, minuteToken string) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != minutesNoReadPermissionCode {
+		return err
+	}
+	p.Message = fmt.Sprintf("No read permission for minute %s: cannot query the minute.", minuteToken)
+	p.Hint = "Ask the minute owner for minute file read permission"
+	return err
+}
+
+// validMinuteToken matches the server's minute-token format and blocks any
+// user-supplied token from reaching filesystem paths unsanitized.
+var validMinuteToken = regexp.MustCompile(`^[a-z0-9]+$`)
 
 // sanitizeLogValue strips newlines and ANSI escape sequences from user input for safe logging.
 func sanitizeLogValue(s string) string {
@@ -75,19 +94,19 @@ func sanitizeLogValue(s string) string {
 
 // getPrimaryCalendarID retrieves the current user's primary calendar ID.
 func getPrimaryCalendarID(runtime *common.RuntimeContext) (string, error) {
-	data, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/calendar/v4/calendars/primary", nil, nil)
+	data, err := runtime.CallAPITyped(http.MethodPost, "/open-apis/calendar/v4/calendars/primary", nil, nil)
 	if err != nil {
-		return "", err // preserve original API error (with lark error code)
+		return "", err
 	}
 	calendars, _ := data["calendars"].([]any)
 	if len(calendars) == 0 {
-		return "", output.ErrValidation("primary calendar not found")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "primary calendar not found")
 	}
 	first, _ := calendars[0].(map[string]any)
 	cal, _ := first["calendar"].(map[string]any)
 	calID, _ := cal["calendar_id"].(string)
 	if calID == "" {
-		return "", output.ErrValidation("primary calendar ID is empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "primary calendar ID is empty")
 	}
 	return calID, nil
 }
@@ -110,23 +129,23 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 	if needNotes {
 		body["need_meeting_notes"] = true
 	}
-	data, err := runtime.DoAPIJSON(http.MethodPost,
+	data, err := runtime.CallAPITyped(http.MethodPost,
 		fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/mget_instance_relation_info", validate.EncodePathSegment(calendarID)),
 		nil,
 		body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query event relation info: %w", err)
+		return nil, err
 	}
 
 	infos, _ := data["instance_relation_infos"].([]any)
 	if len(infos) == 0 {
-		return nil, fmt.Errorf("no event relation info found")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "no event relation info found")
 	}
 	info, _ := infos[0].(map[string]any)
 
 	rawIDs, _ := info["meeting_instance_ids"].([]any)
 	if len(rawIDs) == 0 {
-		return nil, fmt.Errorf("no associated video meeting for this event")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "no associated video meeting for this event")
 	}
 
 	result := &eventRelationInfo{}
@@ -190,7 +209,10 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 	for _, meetingID := range relInfo.MeetingIDs {
 		fmt.Fprintf(errOut, "%s event %s → meeting_id=%s\n", logPrefix, sanitizeLogValue(instanceID), sanitizeLogValue(meetingID))
 		noteResult := fetchNoteByMeetingID(ctx, runtime, meetingID)
-		if noteResult["error"] == nil {
+		// success means note detail was retrieved, regardless of whether the
+		// recording API (minute_token) call succeeded — minute_token failures
+		// surface as part of the merged `error` string for downstream visibility.
+		if noteID, _ := noteResult["note_id"].(string); noteID != "" {
 			for k, v := range noteResult {
 				result[k] = v
 			}
@@ -240,10 +262,46 @@ func asStringSlice(v any) []string {
 	return ss
 }
 
-// fetchNoteByMeetingID queries notes via meeting_id.
+// fetchMeetingMinuteToken queries the recording API of a meeting and returns
+// the associated minute_token (parsed from the recording URL), an optional
+// hint for expected missing states, and an error for unexpected failures.
+func fetchMeetingMinuteToken(runtime *common.RuntimeContext, meetingID string) (token, hint string, err error) {
+	data, apiErr := runtime.CallAPITyped(http.MethodGet,
+		fmt.Sprintf("/open-apis/vc/v1/meetings/%s/recording", validate.EncodePathSegment(meetingID)),
+		nil, nil)
+	if apiErr != nil {
+		if p, ok := errs.ProblemOf(apiErr); ok {
+			switch p.Code {
+			case recordingNotFoundCode:
+				return "", "no minute file for this meeting", nil
+			case recordingNoPermissionCode:
+				return "", "no permission to access this meeting's minute; ask the meeting owner to share the minute", nil
+			case recordingGeneratingCode:
+				return "", "minute file is still being generated; please retry later", nil
+			}
+		}
+		return "", "", apiErr
+	}
+
+	recording, _ := data["recording"].(map[string]any)
+	if recording == nil {
+		return "", "no recording available for this meeting", nil
+	}
+	recordingURL, _ := recording["url"].(string)
+	if t := extractMinuteToken(recordingURL); t != "" {
+		return t, "", nil
+	}
+	return "", "no minute_token found in recording URL", nil
+}
+
+// fetchNoteByMeetingID queries notes via meeting_id and additionally fetches
+// the meeting's minute_token via the recording API. The two paths are queried
+// independently; their failures are merged into a single `error` field
+// (semicolon-separated) so Agents always see all causes at once. The
+// `minute_token` field is only populated on success.
 func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, meetingID string) map[string]any {
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
-		larkcore.QueryParams{"with_participants": []string{"false"}, "query_mode": []string{"0"}}, nil)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
+		map[string]interface{}{"with_participants": "false", "query_mode": "0"}, nil)
 	if err != nil {
 		return map[string]any{"meeting_id": meetingID, "error": fmt.Sprintf("failed to query meeting: %v", err)}
 	}
@@ -253,14 +311,66 @@ func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, m
 		return map[string]any{"meeting_id": meetingID, "error": "meeting not found"}
 	}
 
-	noteID, _ := meeting["note_id"].(string)
-	if noteID == "" {
-		return map[string]any{"meeting_id": meetingID, "error": "no notes available for this meeting"}
+	// Always attempt to query the meeting's minute_token via the recording API,
+	// regardless of whether the meeting has a note_id, so callers always see
+	// minute state for follow-up calls (e.g. `vc +notes --minute-tokens=...`).
+	minuteToken, minuteHint, minuteErr := fetchMeetingMinuteToken(runtime, meetingID)
+
+	var result map[string]any
+	var noteErr string
+	if noteID, _ := meeting["note_id"].(string); noteID != "" {
+		result = fetchNoteDetail(ctx, runtime, noteID)
+		if msg, _ := result["error"].(string); msg != "" {
+			noteErr = msg
+			delete(result, "error")
+		}
+	} else {
+		result = map[string]any{}
+		noteErr = "no notes available for this meeting"
 	}
 
-	result := fetchNoteDetail(ctx, runtime, noteID)
 	result["meeting_id"] = meetingID
+	if minuteToken != "" {
+		result["minute_token"] = minuteToken
+	}
+	var minuteErrMsg string
+	if minuteHint != "" {
+		minuteErrMsg = minuteHint
+	} else if minuteErr != nil {
+		minuteErrMsg = minuteErr.Error()
+	}
+	if combined := joinErrors(noteErr, minuteErrMsg); combined != "" {
+		result["error"] = combined
+	}
 	return result
+}
+
+// joinErrors merges multiple non-empty error messages with "; " so Agents can
+// see all causes at once when both note and minute paths fail.
+func joinErrors(msgs ...string) string {
+	parts := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		if m != "" {
+			parts = append(parts, m)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// hasNotesPayload reports whether a result map carries any usable note or
+// minute payload, irrespective of partial failures surfaced via `error`.
+// note_id counts: it is the routing key for `note +detail` / `note +transcript`,
+// so a detail hit without doc tokens is still an actionable result.
+func hasNotesPayload(m map[string]any) bool {
+	if m == nil {
+		return false
+	}
+	for _, k := range []string{"note_id", "note_doc_token", "verbatim_doc_token", "minute_token", "meeting_notes", "shared_doc_tokens", "artifacts"} {
+		if v, ok := m[k]; ok && v != nil && v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchNoteByMinuteToken queries notes via minute_token.
@@ -269,9 +379,14 @@ func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, m
 func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext, minuteToken string) map[string]any {
 	errOut := runtime.IO().ErrOut
 
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
 	if err != nil {
-		return map[string]any{"minute_token": minuteToken, "error": fmt.Sprintf("failed to query minutes: %v", err)}
+		err = minutesReadError(err, minuteToken)
+		result := map[string]any{"minute_token": minuteToken, "error": err.Error()}
+		if p, ok := errs.ProblemOf(err); ok && p.Hint != "" {
+			result["hint"] = p.Hint
+		}
+		return result
 	}
 
 	minute, _ := data["minute"].(map[string]any)
@@ -299,13 +414,9 @@ func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext,
 		}
 	}
 
-	// path 2 & 3: AI 产物统一归到 artifacts 字段下
+	// AI artifacts + transcript come from the same /artifacts endpoint.
 	artifacts := map[string]any{}
-	fetchInlineArtifacts(runtime, minuteToken, artifacts)
-	transcriptPath := downloadTranscriptFile(runtime, minuteToken, title)
-	if transcriptPath != "" {
-		artifacts["transcript_file"] = transcriptPath
-	}
+	fetchInlineArtifacts(runtime, minuteToken, title, artifacts)
 	if len(artifacts) > 0 {
 		result["artifacts"] = artifacts
 	}
@@ -332,18 +443,51 @@ func sanitizeDirName(title, minuteToken string) string {
 	return fmt.Sprintf("artifact-%s-%s", safe, minuteToken)
 }
 
-// downloadTranscriptFile downloads transcript to a local file and returns the file path (empty on failure).
-func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, title string) string {
+// fetchInlineArtifacts fetches summary/todos/chapters/keywords and transcript from the
+// /artifacts API, persists transcript to disk, and exposes the path as transcript_file.
+func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, title string, result map[string]any) {
+	errOut := runtime.IO().ErrOut
+	fmt.Fprintf(errOut, "%s fetching AI artifacts...\n", logPrefix)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
+	if err != nil {
+		fmt.Fprintf(errOut, "%s failed to fetch AI artifacts: %v\n", logPrefix, err)
+		return
+	}
+	if summary, ok := data["summary"].(string); ok && summary != "" {
+		result["summary"] = summary
+	}
+	if todos, ok := data["minute_todos"].([]any); ok && len(todos) > 0 {
+		result["todos"] = todos
+	}
+	if chapters, ok := data["minute_chapters"].([]any); ok && len(chapters) > 0 {
+		result["chapters"] = chapters
+	}
+	if keywords, ok := data["keywords"].([]any); ok && len(keywords) > 0 {
+		result["keywords"] = keywords
+	}
+	if transcript, ok := data["transcript"].(string); ok && transcript != "" {
+		if path := saveTranscriptToFile(runtime, minuteToken, title, []byte(transcript)); path != "" {
+			result["transcript_file"] = path
+		}
+	}
+}
+
+// saveTranscriptToFile persists transcript bytes to the canonical artifact path
+// for the given minute_token. Returns the file path on success (or when the
+// file already exists and --overwrite is not set), empty string on any failure.
+func saveTranscriptToFile(runtime *common.RuntimeContext, minuteToken, title string, content []byte) string {
 	errOut := runtime.IO().ErrOut
 
-	base := "."
+	// With no --output-dir the default layout shares the directory with
+	// `minutes +download`. Legacy layout is preserved when the flag is set.
+	var dirName string
 	if outDir := runtime.Str("output-dir"); outDir != "" {
-		base = outDir
+		dirName = filepath.Join(outDir, sanitizeDirName(title, minuteToken))
+	} else {
+		dirName = common.DefaultMinuteArtifactDir(minuteToken)
 	}
-	dirName := filepath.Join(base, sanitizeDirName(title, minuteToken))
-	transcriptPath := filepath.Join(dirName, "transcript.txt")
+	transcriptPath := filepath.Join(dirName, common.DefaultTranscriptFileName)
 
-	// Overwrite check via FileIO.Stat
 	if !runtime.Bool("overwrite") {
 		if _, statErr := runtime.FileIO().Stat(transcriptPath); statErr == nil {
 			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
@@ -351,29 +495,8 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 		}
 	}
 
-	fmt.Fprintf(errOut, "%s downloading transcript: %s\n", logPrefix, transcriptPath)
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodGet,
-		ApiPath:    fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript", validate.EncodePathSegment(minuteToken)),
-		QueryParams: larkcore.QueryParams{
-			"need_speaker":   []string{"true"},
-			"need_timestamp": []string{"true"},
-			"file_format":    []string{"txt"},
-		},
-	}, larkcore.WithFileDownload())
-	if err != nil {
-		fmt.Fprintf(errOut, "%s failed to download transcript: %v\n", logPrefix, err)
-		return ""
-	}
-	if apiResp.StatusCode >= 400 {
-		fmt.Fprintf(errOut, "%s failed to download transcript: HTTP %d\n", logPrefix, apiResp.StatusCode)
-		return ""
-	}
-	if len(apiResp.RawBody) == 0 {
-		fmt.Fprintf(errOut, "%s transcript is empty (not available for this minute)\n", logPrefix)
-		return ""
-	}
-	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(apiResp.RawBody)); err != nil {
+	fmt.Fprintf(errOut, "%s writing transcript: %s\n", logPrefix, transcriptPath)
+	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(content)); err != nil {
 		var me *fileio.MkdirError
 		switch {
 		case errors.Is(err, fileio.ErrPathValidation):
@@ -388,101 +511,22 @@ func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, 
 	return transcriptPath
 }
 
-// fetchInlineArtifacts fetches summary/todos/chapters from artifacts API and writes them inline into result map.
-func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, result map[string]any) {
-	errOut := runtime.IO().ErrOut
-	fmt.Fprintf(errOut, "%s fetching AI artifacts...\n", logPrefix)
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
+// fetchNoteDetail retrieves note fields via note_id by delegating to the note
+// domain (the canonical owner of note-detail parsing) and adapting the typed
+// result into the historical map shape `vc +notes` merges into its output. The
+// new note_id / note_display_type fields ride along via Detail.ToMap.
+func fetchNoteDetail(ctx context.Context, runtime *common.RuntimeContext, noteID string) map[string]any {
+	detail, err := note.FetchDetail(ctx, runtime, noteID)
 	if err != nil {
-		fmt.Fprintf(errOut, "%s failed to fetch AI artifacts: %v\n", logPrefix, err)
-		return
-	}
-	if summary, ok := data["summary"].(string); ok && summary != "" {
-		result["summary"] = summary
-	}
-	if todos, ok := data["minute_todos"].([]any); ok && len(todos) > 0 {
-		result["todos"] = todos
-	}
-	if chapters, ok := data["minute_chapters"].([]any); ok && len(chapters) > 0 {
-		result["chapters"] = chapters
-	}
-}
-
-// parseArtifactType extracts artifact_type as int from varying JSON number representations.
-func parseArtifactType(v any) int {
-	switch n := v.(type) {
-	case json.Number:
-		i, _ := n.Int64()
-		return int(i)
-	case float64:
-		return int(n)
-	default:
-		return 0
-	}
-}
-
-// extractArtifactTokens picks main-doc and verbatim-doc tokens from the artifacts list.
-func extractArtifactTokens(artifacts []any) (noteDoc, verbatimDoc string) {
-	for _, a := range artifacts {
-		artifact, _ := a.(map[string]any)
-		if artifact == nil {
-			continue
+		if problem, ok := errs.ProblemOf(err); ok && problem.Code == note.NoNoteReadPermissionCode {
+			return map[string]any{"error": fmt.Sprintf("[%v]: no read permission for this meeting note", problem.Code)}
 		}
-		docToken, _ := artifact["doc_token"].(string)
-		switch parseArtifactType(artifact["artifact_type"]) {
-		case artifactTypeMainDoc:
-			noteDoc = docToken
-		case artifactTypeVerbatim:
-			verbatimDoc = docToken
-		default:
-			// ignore unknown artifact types
+		if errors.Is(err, note.ErrEmptyDetail) {
+			return map[string]any{"error": note.ErrEmptyDetail.Error()}
 		}
-	}
-	return
-}
-
-// extractDocTokens collects doc_token values from a list of reference objects.
-func extractDocTokens(refs []any) []string {
-	var tokens []string
-	for _, s := range refs {
-		source, _ := s.(map[string]any)
-		if source == nil {
-			continue
-		}
-		if docToken, _ := source["doc_token"].(string); docToken != "" {
-			tokens = append(tokens, docToken)
-		}
-	}
-	return tokens
-}
-
-// fetchNoteDetail retrieves note document tokens via note_id.
-func fetchNoteDetail(_ context.Context, runtime *common.RuntimeContext, noteID string) map[string]any {
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/notes/%s", validate.EncodePathSegment(noteID)), nil, nil)
-	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("failed to query note detail: %v", err)}
 	}
-
-	note, _ := data["note"].(map[string]any)
-	if note == nil {
-		return map[string]any{"error": "note detail is empty"}
-	}
-
-	creatorID, _ := note["creator_id"].(string)
-	createTime := common.FormatTime(note["create_time"])
-	noteDocToken, verbatimDocToken := extractArtifactTokens(common.GetSlice(note, "artifacts"))
-	sharedDocTokens := extractDocTokens(common.GetSlice(note, "references"))
-
-	result := map[string]any{
-		"creator_id":         creatorID,
-		"create_time":        createTime,
-		"note_doc_token":     noteDocToken,
-		"verbatim_doc_token": verbatimDocToken,
-	}
-	if len(sharedDocTokens) > 0 {
-		result["shared_doc_tokens"] = sharedDocTokens
-	}
-	return result
+	return detail.ToMap()
 }
 
 // VCNotes queries meeting notes via meeting-ids, minute-tokens, or calendar-event-ids.
@@ -493,16 +537,17 @@ var VCNotes = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"vc:note:read"}, // minimum scope; additional per-flag scopes checked in Validate
 	AuthTypes:   []string{"user"},
+	Hidden:      true, // hidden from --help; prefer vc +detail, minutes +detail, or note +detail
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch"},
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch"},
 		{Name: "calendar-event-ids", Desc: "calendar event instance IDs, comma-separated for batch"},
-		{Name: "output-dir", Desc: "output directory for artifact files (default: current dir)"},
+		{Name: "output-dir", Desc: "output directory for artifact files (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing artifact files"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := common.ExactlyOne(runtime, "meeting-ids", "minute-tokens", "calendar-event-ids"); err != nil {
+		if err := common.ExactlyOneTyped(runtime, "meeting-ids", "minute-tokens", "calendar-event-ids"); err != nil {
 			return err
 		}
 		// batch input size limit
@@ -510,14 +555,21 @@ var VCNotes = common.Shortcut{
 		for _, flag := range []string{"meeting-ids", "minute-tokens", "calendar-event-ids"} {
 			if v := runtime.Str(flag); v != "" {
 				if ids := common.SplitCSV(v); len(ids) > maxBatchSize {
-					return output.ErrValidation("--%s: too many IDs (%d), maximum is %d", flag, len(ids), maxBatchSize)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s: too many IDs (%d), maximum is %d", flag, len(ids), maxBatchSize).WithParam("--" + flag)
 				}
 			}
 		}
-		// output-dir 路径安全校验
 		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafeOutputDir(runtime.FileIO(), outDir); err != nil {
+			if err := common.ValidateSafePathTyped(runtime.FileIO(), outDir); err != nil {
 				return err
+			}
+		}
+		// Reject malformed minute tokens before they flow into filesystem paths.
+		if v := runtime.Str("minute-tokens"); v != "" {
+			for _, token := range common.SplitCSV(v) {
+				if !validMinuteToken.MatchString(token) {
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid minute token %q: must contain only lowercase alphanumeric characters", token).WithParam("--minute-tokens")
+				}
 			}
 		}
 		// dynamic scope check based on which flag is provided
@@ -535,9 +587,11 @@ var VCNotes = common.Shortcut{
 		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
 		if err == nil && result != nil && result.Scopes != "" {
 			if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
-				return output.ErrWithHint(output.ExitAuth, "missing_scope",
-					fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-					fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
+				return errs.NewPermissionError(errs.SubtypeMissingScope,
+					"missing required scope(s): %s", strings.Join(missing, ", ")).
+					WithHint("run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")).
+					WithMissingScopes(missing...).
+					WithIdentity(string(runtime.As()))
 			}
 		}
 		return nil
@@ -547,17 +601,17 @@ var VCNotes = common.Shortcut{
 			return common.NewDryRunAPI().
 				GET("/open-apis/vc/v1/meetings/{meeting_id}").
 				GET("/open-apis/vc/v1/notes/{note_id}").
+				GET("/open-apis/vc/v1/meetings/{meeting_id}/recording").
 				Set("meeting_ids", common.SplitCSV(ids)).
-				Set("steps", "meeting.get → note_id → note detail API")
+				Set("steps", "meeting.get → note_id → note detail API + recording API → minute_token")
 		}
 		if tokens := runtime.Str("minute-tokens"); tokens != "" {
 			return common.NewDryRunAPI().
 				GET("/open-apis/minutes/v1/minutes/{minute_token}").
 				GET("/open-apis/vc/v1/notes/{note_id}").
 				GET("/open-apis/minutes/v1/minutes/{minute_token}/artifacts").
-				GET("/open-apis/minutes/v1/minutes/{minute_token}/transcript").
 				Set("minute_tokens", common.SplitCSV(tokens)).
-				Set("steps", "minutes API → note detail + AI artifacts + transcript")
+				Set("steps", "minutes API → note detail + AI artifacts (incl. transcript)")
 		}
 		ids := runtime.Str("calendar-event-ids")
 		return common.NewDryRunAPI().
@@ -565,8 +619,9 @@ var VCNotes = common.Shortcut{
 			POST("/open-apis/calendar/v4/calendars/{calendar_id}/events/mget_instance_relation_info").
 			GET("/open-apis/vc/v1/meetings/{meeting_id}").
 			GET("/open-apis/vc/v1/notes/{note_id}").
+			GET("/open-apis/vc/v1/meetings/{meeting_id}/recording").
 			Set("calendar_event_ids", common.SplitCSV(ids)).
-			Set("steps", "primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note detail API")
+			Set("steps", "primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note detail API + recording API → minute_token")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		errOut := runtime.IO().ErrOut
@@ -620,11 +675,13 @@ var VCNotes = common.Shortcut{
 			}
 		}
 
-		// count results
+		// count results: a result counts as "successful" when it carries any
+		// note/minute payload, even if the merged `error` field surfaces a
+		// partial failure (e.g. note ok but minute_token lookup failed).
 		successCount := 0
 		for _, r := range results {
 			m, _ := r.(map[string]any)
-			if m["error"] == nil {
+			if hasNotesPayload(m) {
 				successCount++
 			}
 		}
@@ -632,9 +689,7 @@ var VCNotes = common.Shortcut{
 
 		// all failed → return structured error
 		if successCount == 0 && len(results) > 0 {
-			outData := map[string]any{"notes": results}
-			runtime.OutFormat(outData, &output.Meta{Count: len(results)}, nil)
-			return output.ErrAPI(0, fmt.Sprintf("all %d queries failed", len(results)), nil)
+			return runtime.OutPartialFailure(map[string]any{"notes": results}, &output.Meta{Count: len(results)})
 		}
 
 		// output
@@ -651,6 +706,12 @@ var VCNotes = common.Shortcut{
 					id, _ = m["calendar_event_id"].(string)
 				}
 				row := map[string]interface{}{"id": id}
+				if v, _ := m["note_id"].(string); v != "" {
+					row["note_id"] = v
+				}
+				if v, _ := m["note_display_type"].(string); v != "" {
+					row["note_display_type"] = v
+				}
 				if errMsg, _ := m["error"].(string); errMsg != "" {
 					row["status"] = "FAIL"
 					row["error"] = errMsg

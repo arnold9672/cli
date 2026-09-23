@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	clie2e "code.byted.org/lark_search/larksuite-cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -22,7 +22,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	baseName := "lark-cli-e2e-base-basic-" + clie2e.GenerateSuffix()
 	baseToken := createBaseWithRetry(t, ctx, baseName)
 
-	t.Run("get base", func(t *testing.T) {
+	t.Run("get base as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+base-get", "--base-token", baseToken},
 			DefaultAs: "bot",
@@ -39,7 +39,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	})
 
 	tableName := "lark-cli-e2e-table-basic-" + clie2e.GenerateSuffix()
-	tableID, primaryFieldID, primaryViewID := createTableWithRetry(
+	tableID, _, _ := createTableWithRetry(
 		t,
 		parentT,
 		ctx,
@@ -49,7 +49,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		`{"name":"Main","type":"grid"}`,
 	)
 
-	t.Run("get table", func(t *testing.T) {
+	t.Run("get table as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+table-get", "--base-token", baseToken, "--table-id", tableID},
 			DefaultAs: "bot",
@@ -61,17 +61,9 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		assert.Equal(t, tableName, gjson.Get(result.Stdout, "data.table.name").String())
 	})
 
-	t.Run("list tables and find created table", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+table-list", "--base-token", baseToken},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-		assert.True(t, gjson.Get(result.Stdout, `data.tables.#(id=="`+tableID+`")`).Exists(), "stdout:\n%s", result.Stdout)
+	t.Run("list tables and find created table as bot", func(t *testing.T) {
+		table := findBaseTableByID(t, ctx, baseToken, tableID)
+		assert.Equal(t, tableID, table.Get("id").String())
+		assert.Equal(t, tableName, table.Get("name").String())
 	})
-
-	require.NotEmpty(t, primaryFieldID)
-	require.NotEmpty(t, primaryViewID)
 }

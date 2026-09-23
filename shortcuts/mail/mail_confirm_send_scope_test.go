@@ -7,7 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 func TestConfirmSendMissingScopeReply(t *testing.T) {
@@ -39,14 +40,14 @@ func assertMissingSendScope(t *testing.T, err error) {
 	if err == nil {
 		t.Fatal("expected error when token lacks send scope with --confirm-send, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAuth {
-		t.Errorf("expected exit code %d (ExitAuth), got %d", output.ExitAuth, exitErr.Code)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Errorf("expected exit code %d (ExitAuth), got %d", output.ExitAuth, gotCode)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "missing_scope" {
-		t.Errorf("expected detail type missing_scope, got %+v", exitErr.Detail)
+	if permErr.Subtype != errs.SubtypeMissingScope {
+		t.Errorf("expected subtype %q, got %q", errs.SubtypeMissingScope, permErr.Subtype)
 	}
 }

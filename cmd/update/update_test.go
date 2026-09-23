@@ -5,15 +5,21 @@ package cmdupdate
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/selfupdate"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/selfupdate"
+	"code.byted.org/lark_search/larksuite-cli/internal/skillscheck"
 )
 
 // newTestFactory creates a test factory with minimal config.
@@ -24,7 +30,6 @@ func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffe
 }
 
 // mockDetect sets up newUpdater to return an Updater with the given DetectResult.
-// It preserves any existing NpmInstallOverride/SkillsUpdateOverride that may be set later.
 func mockDetect(t *testing.T, result selfupdate.DetectResult) {
 	t.Helper()
 	origNew := newUpdater
@@ -37,20 +42,62 @@ func mockDetect(t *testing.T, result selfupdate.DetectResult) {
 }
 
 // mockDetectAndNpm sets up newUpdater with detect, npm install, and skills overrides all at once.
-func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult,
-	npmFn func(string) *selfupdate.NpmResult,
-	skillsFn func() *selfupdate.NpmResult) {
+func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult, npmFn func(string) *selfupdate.NpmResult) {
 	t.Helper()
 	origNew := newUpdater
 	newUpdater = func() *selfupdate.Updater {
 		u := selfupdate.New()
 		u.DetectOverride = func() selfupdate.DetectResult { return result }
 		u.NpmInstallOverride = npmFn
-		u.SkillsUpdateOverride = skillsFn
 		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
 		return u
 	}
 	t.Cleanup(func() { newUpdater = origNew })
+}
+
+func successfulSkillsIndexFetch() func() *selfupdate.NpmResult {
+	return func() *selfupdate.NpmResult {
+		r := &selfupdate.NpmResult{}
+		r.Stdout.WriteString(`{"skills":[{"name":"lark-calendar"},{"name":"lark-mail"}]}`)
+		return r
+	}
+}
+
+func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
+	return func(args ...string) *selfupdate.NpmResult {
+		r := &selfupdate.NpmResult{}
+		switch strings.Join(args, " ") {
+		case "-y skills add https://open.feishu.cn --list":
+			r.Stdout.WriteString("Available Skills\n │    lark-calendar\n │    lark-mail\n")
+		case "-y skills ls -g --json":
+			r.Stdout.WriteString(`[{"name":"lark-calendar","path":"/tmp/lark-calendar","scope":"global","agents":["Codex"]},{"name":"custom-skill","path":"/tmp/custom-skill","scope":"global","agents":["Codex"]}]`)
+		case "-y skills ls -g":
+			r.Stdout.WriteString("Global Skills\nlark-calendar /tmp/lark-calendar\ncustom-skill /tmp/custom-skill\n")
+		default:
+		}
+		return r
+	}
+}
+
+func TestNormalizeVersion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "1.2.3", want: "1.2.3"},
+		{input: "v1.2.3", want: "1.2.3"},
+		{input: "V1.2.3", want: "1.2.3"},
+		{input: " v1.2.3 ", want: "1.2.3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := normalizeVersion(tt.input); got != tt.want {
+				t.Fatalf("normalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
@@ -163,7 +210,204 @@ func TestUpdateManual_Human(t *testing.T) {
 	}
 }
 
+func TestUpdateMemorySource_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("memory source update must not fetch npm latest version")
+		return "", nil
+	}
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.1" }
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{
+				Method:       selfupdate.InstallMemorySource,
+				ResolvedPath: "/home/me/.local/libexec/lark-memory-cli/lark-cli",
+				SourceDir:    "/home/me/.lark-cli-memory",
+				AppDir:       "/home/me/.local/libexec/lark-memory-cli",
+				WrapperPath:  "/home/me/.local/bin/lark-memory-cli",
+			}
+		}
+		u.MemoryUpdateOverride = func(opts selfupdate.MemoryUpdateOptions) (*selfupdate.MemoryUpdateResult, error) {
+			if opts.Check {
+				t.Fatal("did not expect check mode")
+			}
+			if opts.SourceDir != "/home/me/.lark-cli-memory" || opts.AppDir == "" || opts.WrapperPath == "" {
+				t.Fatalf("unexpected memory update opts: %+v", opts)
+			}
+			return &selfupdate.MemoryUpdateResult{
+				Branch:           selfupdate.MemoryDefaultBranch,
+				SourceDir:        opts.SourceDir,
+				BinaryPath:       opts.AppDir + "/lark-cli",
+				WrapperPath:      opts.WrapperPath,
+				PreviousRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				CurrentRevision:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				Version:          "v1.0.1",
+				Updated:          true,
+				SkillsSynced:     []string{"/home/me/.agents/skills/lark-memory"},
+				SkillsArchived:   []string{"/home/me/.codex/skills/.disabled/lark-memory-cli-duplicates/lark-memory"},
+			}, nil
+		}
+		return u
+	}
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion; newUpdater = origNew })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"install_method": "memory_source"`) {
+		t.Errorf("expected memory_source install method, got: %s", out)
+	}
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated action, got: %s", out)
+	}
+	if !strings.Contains(out, `"skills_action": "synced"`) {
+		t.Errorf("expected skills synced action, got: %s", out)
+	}
+	if !strings.Contains(out, `"duplicate_skills_action": "archived"`) {
+		t.Errorf("expected duplicate skills archived action, got: %s", out)
+	}
+}
+
+func TestUpdateMemorySourceHumanShowsReadableVersion(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs(nil)
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("memory source update must not fetch npm latest version")
+		return "", nil
+	}
+	origVersion := currentVersion
+	currentVersion = func() string { return "v1.0.1" }
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{
+				Method:       selfupdate.InstallMemorySource,
+				ResolvedPath: "/home/me/.local/libexec/lark-memory-cli/lark-cli",
+				SourceDir:    "/home/me/.lark-cli-memory",
+				AppDir:       "/home/me/.local/libexec/lark-memory-cli",
+				WrapperPath:  "/home/me/.local/bin/lark-memory-cli",
+			}
+		}
+		u.MemoryUpdateOverride = func(opts selfupdate.MemoryUpdateOptions) (*selfupdate.MemoryUpdateResult, error) {
+			return &selfupdate.MemoryUpdateResult{
+				Branch:           selfupdate.MemoryDefaultBranch,
+				SourceDir:        opts.SourceDir,
+				BinaryPath:       opts.AppDir + "/lark-cli",
+				WrapperPath:      opts.WrapperPath,
+				ControlPath:      opts.SourceDir + "/bin/memoryctl",
+				PreviousRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				CurrentRevision:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				Version:          "v1.0.2",
+				Updated:          true,
+				SkillsSynced:     []string{"/home/me/.agents/skills/lark-memory"},
+				SkillsArchived:   []string{"/home/me/.codex/skills/.disabled/lark-memory-cli-duplicates/lark-memory"},
+			}, nil
+		}
+		return u
+	}
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion; newUpdater = origNew })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "lark-memory-cli updated from v1.0.1 to v1.0.2") {
+		t.Errorf("expected readable update versions, got: %s", out)
+	}
+	if !strings.Contains(out, "Version: v1.0.2") {
+		t.Errorf("expected Version line, got: %s", out)
+	}
+	if !strings.Contains(out, "Revision: bbbbbbbbbbbb") {
+		t.Errorf("expected short revision line, got: %s", out)
+	}
+	if !strings.Contains(out, "Control: /home/me/.lark-cli-memory/bin/memoryctl") {
+		t.Errorf("expected Control line, got: %s", out)
+	}
+	if !strings.Contains(out, "archived 1 retired or duplicate skill directories") {
+		t.Errorf("expected duplicate archive summary, got: %s", out)
+	}
+	if !strings.Contains(out, "升级点:") {
+		t.Errorf("expected upgrade notes heading, got: %s", out)
+	}
+	if !strings.Contains(out, "Agent 读取 Memory 时优先选择 agentic_v1 版本；没有 agentic_v1 时回退到 default_variant_key。") {
+		t.Errorf("expected memory variant upgrade note, got: %s", out)
+	}
+	if !strings.Contains(out, "时间范围图命令和选择器已更名为 graph-range") {
+		t.Errorf("expected graph-range migration note, got: %s", out)
+	}
+}
+
+func TestUpdateMemorySourceCheck_JSON(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--check", "--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("memory source check must not fetch npm latest version")
+		return "", nil
+	}
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.1" }
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{
+				Method:      selfupdate.InstallMemorySource,
+				SourceDir:   "/home/me/.lark-cli-memory",
+				AppDir:      "/home/me/.local/libexec/lark-memory-cli",
+				WrapperPath: "/home/me/.local/bin/lark-memory-cli",
+			}
+		}
+		u.MemoryUpdateOverride = func(opts selfupdate.MemoryUpdateOptions) (*selfupdate.MemoryUpdateResult, error) {
+			if !opts.Check {
+				t.Fatal("expected check mode")
+			}
+			return &selfupdate.MemoryUpdateResult{
+				Branch:           selfupdate.MemoryDefaultBranch,
+				SourceDir:        opts.SourceDir,
+				BinaryPath:       opts.AppDir + "/lark-cli",
+				WrapperPath:      opts.WrapperPath,
+				PreviousRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				CurrentRevision:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				RemoteRevision:   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				Version:          "v1.0.1",
+				Updated:          true,
+			}, nil
+		}
+		return u
+	}
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion; newUpdater = origNew })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "update_available"`) {
+		t.Errorf("expected update_available action, got: %s", out)
+	}
+	if !strings.Contains(out, `"remote_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"`) {
+		t.Errorf("expected remote revision, got: %s", out)
+	}
+}
+
 func TestUpdateNpm_JSON(t *testing.T) {
+	// Isolate config dir because skills sync writes skills-state.json.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -177,7 +421,6 @@ func TestUpdateNpm_JSON(t *testing.T) {
 	mockDetectAndNpm(t,
 		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
 		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
-		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
 	)
 
 	err := cmd.Execute()
@@ -191,6 +434,9 @@ func TestUpdateNpm_JSON(t *testing.T) {
 }
 
 func TestUpdateNpm_Human(t *testing.T) {
+	// Same isolation as TestUpdateNpm_JSON — see comment there.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, _, stderr := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
@@ -204,7 +450,6 @@ func TestUpdateNpm_Human(t *testing.T) {
 	mockDetectAndNpm(t,
 		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
 		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
-		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
 	)
 
 	err := cmd.Execute()
@@ -218,6 +463,9 @@ func TestUpdateNpm_Human(t *testing.T) {
 }
 
 func TestUpdateForce_JSON(t *testing.T) {
+	// Same state-isolation rationale as TestUpdateNpm_JSON.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--force", "--json"})
@@ -231,7 +479,6 @@ func TestUpdateForce_JSON(t *testing.T) {
 	mockDetectAndNpm(t,
 		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
 		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
-		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
 	)
 
 	err := cmd.Execute()
@@ -282,13 +529,88 @@ func TestUpdateFetchError_Human(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		t.Fatalf("expected *errs.NetworkError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitNetwork {
-		t.Errorf("expected ExitNetwork (%d), got %d", output.ExitNetwork, exitErr.Code)
+	if netErr.Subtype != errs.SubtypeNetworkTransport {
+		t.Errorf("subtype = %q, want %q", netErr.Subtype, errs.SubtypeNetworkTransport)
 	}
+	if got := output.ExitCodeOf(err); got != output.ExitNetwork {
+		t.Errorf("expected ExitNetwork (%d), got %d", output.ExitNetwork, got)
+	}
+}
+
+// TestUpdateInvalidVersion_Human verifies a malformed registry version surfaces
+// as a typed internal error in human mode, keeping the legacy exit code 5.
+func TestUpdateInvalidVersion_Human(t *testing.T) {
+	f, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "not-a-version", nil }
+	defer func() { fetchLatest = origFetch }()
+
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected non-nil error, got nil")
+	}
+	var intErr *errs.InternalError
+	if !errors.As(err, &intErr) {
+		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
+	}
+	if intErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("expected ExitInternal (%d), got %d", output.ExitInternal, got)
+	}
+}
+
+// TestReportError pins reportError's two surfaces after the typed migration:
+// human mode returns the typed error unchanged; JSON mode prints the legacy
+// {ok:false, error:{type, message}} envelope and exits bare with the typed
+// error's exit code (parity with the legacy explicit exit-code argument).
+func TestReportError(t *testing.T) {
+	t.Run("human mode returns the typed error", func(t *testing.T) {
+		f, _, _ := newTestFactory(t)
+		typed := errs.NewAPIError(errs.SubtypeUnknown, "failed to prepare update: disk full")
+		err := reportError(&UpdateOptions{JSON: false}, f.IOStreams, "update_error", typed)
+		var apiErr *errs.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("expected *errs.APIError, got %T: %v", err, err)
+		}
+		if apiErr != typed {
+			t.Errorf("reportError must return the typed error unchanged")
+		}
+		if got := output.ExitCodeOf(err); got != output.ExitAPI {
+			t.Errorf("exit code = %d, want %d (ExitAPI, legacy parity)", got, output.ExitAPI)
+		}
+	})
+
+	t.Run("json mode prints envelope and exits bare with typed code", func(t *testing.T) {
+		f, stdout, _ := newTestFactory(t)
+		typed := errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to check latest version: timeout")
+		err := reportError(&UpdateOptions{JSON: true}, f.IOStreams, "network", typed)
+		var bareErr *output.BareError
+		if !errors.As(err, &bareErr) {
+			t.Fatalf("expected bare *output.BareError, got %T: %v", err, err)
+		}
+		if bareErr.Code != output.ExitNetwork {
+			t.Errorf("bare exit code = %d, want %d", bareErr.Code, output.ExitNetwork)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, `"type": "network"`) && !strings.Contains(out, `"type":"network"`) {
+			t.Errorf("JSON envelope missing type, got: %s", out)
+		}
+		if !strings.Contains(out, "failed to check latest version: timeout") {
+			t.Errorf("JSON envelope missing message, got: %s", out)
+		}
+	})
 }
 
 func TestUpdateInvalidVersion_JSON(t *testing.T) {
@@ -308,6 +630,9 @@ func TestUpdateInvalidVersion_JSON(t *testing.T) {
 }
 
 func TestUpdateDevVersion_JSON(t *testing.T) {
+	// Same state-isolation rationale as TestUpdateNpm_JSON.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -321,7 +646,6 @@ func TestUpdateDevVersion_JSON(t *testing.T) {
 	mockDetectAndNpm(t,
 		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
 		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
-		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
 	)
 
 	err := cmd.Execute()
@@ -433,8 +757,12 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
 		u.VerifyOverride = func(string) error { return errors.New("bad binary") }
 		u.RestoreAvailableOverride = func() bool { return false }
-		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
-			t.Fatal("skills update should not run when binary verification fails")
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			t.Fatal("skills sync should not run when binary verification fails")
+			return nil
+		}
+		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
+			t.Fatal("skills sync should not run when binary verification fails")
 			return nil
 		}
 		return u
@@ -445,12 +773,12 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	if err == nil {
 		t.Fatal("expected verification failure")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var bareErr *output.BareError
+	if !errors.As(err, &bareErr) {
+		t.Fatalf("expected *output.BareError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI (%d), got %d", output.ExitAPI, exitErr.Code)
+	if bareErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI (%d), got %d", output.ExitAPI, bareErr.Code)
 	}
 
 	out := stdout.String()
@@ -462,6 +790,12 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	}
 	if !strings.Contains(out, "npm install -g @larksuite/cli@2.0.0") {
 		t.Errorf("expected manual reinstall command in hint, got: %s", out)
+	}
+	if !strings.Contains(out, "skills will not be synced") {
+		t.Errorf("expected skills-not-synced warning in rollback hint, got: %s", out)
+	}
+	if !strings.Contains(out, "npx skills add larksuite/cli -y -g") {
+		t.Errorf("expected npx skills add hint for skills sync, got: %s", out)
 	}
 }
 
@@ -625,6 +959,9 @@ func TestPermissionHint(t *testing.T) {
 
 func TestUpdateWindows_NpmSuccess_JSON(t *testing.T) {
 	// With the rename trick, Windows npm installs can now auto-update.
+	// Same state-isolation rationale as TestUpdateNpm_JSON.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -641,7 +978,6 @@ func TestUpdateWindows_NpmSuccess_JSON(t *testing.T) {
 	mockDetectAndNpm(t,
 		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: `C:\npm\node_modules\@larksuite\cli\bin\lark-cli.exe`, NpmAvailable: true},
 		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
-		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
 	)
 
 	err := cmd.Execute()
@@ -709,6 +1045,7 @@ func TestUpdateWindows_Symbols(t *testing.T) {
 }
 
 func TestUpdateNpm_SkillsSuccess_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -722,7 +1059,6 @@ func TestUpdateNpm_SkillsSuccess_JSON(t *testing.T) {
 	mockDetectAndNpm(t,
 		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
 		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
-		func() *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
 	)
 
 	err := cmd.Execute()
@@ -737,6 +1073,7 @@ func TestUpdateNpm_SkillsSuccess_JSON(t *testing.T) {
 }
 
 func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{"--json"})
@@ -756,8 +1093,12 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 		}
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
 		u.VerifyOverride = func(string) error { return nil }
-		// Skills update fails
-		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Err = fmt.Errorf("index unavailable")
+			return r
+		}
+		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
 			r.Stderr.WriteString("npx: command not found")
 			r.Err = fmt.Errorf("exit status 127")
@@ -783,12 +1124,13 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 	if !strings.Contains(out, "skills_warning") {
 		t.Errorf("expected skills_warning in output, got: %s", out)
 	}
-	if !strings.Contains(out, "skills_detail") {
-		t.Errorf("expected skills_detail in output, got: %s", out)
+	if !strings.Contains(out, "skills_summary") {
+		t.Errorf("expected skills_summary in output, got: %s", out)
 	}
 }
 
 func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, stderr := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
 	cmd.SetArgs([]string{})
@@ -808,7 +1150,12 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 		}
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
 		u.VerifyOverride = func(string) error { return nil }
-		u.SkillsUpdateOverride = func() *selfupdate.NpmResult {
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Err = fmt.Errorf("index unavailable")
+			return r
+		}
+		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
 			r.Stderr.WriteString("npx: command not found")
 			r.Err = fmt.Errorf("exit status 127")
@@ -831,8 +1178,96 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 	if !strings.Contains(out, "Skills update failed") {
 		t.Errorf("expected skills failure warning, got: %s", out)
 	}
-	if !strings.Contains(out, "npx -y skills add") {
-		t.Errorf("expected manual skills command hint, got: %s", out)
+	if !strings.Contains(out, "lark-cli update --force") {
+		t.Errorf("expected force retry hint, got: %s", out)
+	}
+}
+
+// newTestIO returns a cmdutil.IOStreams backed by bytes.Buffers.
+func newTestIO() *cmdutil.IOStreams {
+	return cmdutil.NewIOStreams(&bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{})
+}
+
+func TestRunSkillsAndState_DedupHit(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	updater := &selfupdate.Updater{
+		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+			called = true
+			return &selfupdate.NpmResult{}
+		},
+	}
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	if got != nil {
+		t.Errorf("runSkillsAndState() = %+v, want nil for dedup hit", got)
+	}
+	if called {
+		t.Error("SkillsCommandOverride called, want skipped due to dedup")
+	}
+}
+
+func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	updater := &selfupdate.Updater{
+		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+			called = true
+			return successfulSkillsCommand()(args...)
+		},
+	}
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true)
+	if got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndState(force=true) = %+v, want successful result", got)
+	}
+	if !called {
+		t.Error("SkillsCommandOverride not called with force=true")
+	}
+}
+
+func TestRunSkillsAndState_SuccessWritesState(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	updater := &selfupdate.Updater{SkillsCommandOverride: successfulSkillsCommand()}
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	if got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndState() = %+v, want non-nil with nil Err", got)
+	}
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.21" {
+		t.Errorf("state.Version = %q, want \"1.0.21\"", state.Version)
+	}
+}
+
+func TestRunSkillsAndState_FailureKeepsOldState(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.20"}); err != nil {
+		t.Fatal(err)
+	}
+	updater := &selfupdate.Updater{
+		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Err = fmt.Errorf("npx failed")
+			return r
+		},
+	}
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false)
+	if got == nil || got.Err == nil {
+		t.Fatalf("runSkillsAndState() = %+v, want non-nil with non-nil Err", got)
+	}
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.20" {
+		t.Errorf("state.Version = %q, want \"1.0.20\" (failure must not overwrite)", state.Version)
 	}
 }
 
@@ -848,4 +1283,508 @@ func TestTruncate(t *testing.T) {
 	if got2 != "hello" {
 		t.Errorf("expected 'hello', got %q", got2)
 	}
+}
+
+func TestUpdateRun_AlreadyLatest_RunsSkillsSync(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.21", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	skillsCalled := false
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
+			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsCommand()(args...)
+			},
+		}
+	}
+
+	f, _, _ := newTestFactory(t)
+	opts := &UpdateOptions{Factory: f, JSON: true}
+	if err := updateRun(opts); err != nil {
+		t.Fatalf("updateRun() err = %v, want nil", err)
+	}
+	if !skillsCalled {
+		t.Error("skills sync not called in already-up-to-date branch")
+	}
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.21" {
+		t.Errorf("state.Version = %q, want \"1.0.21\"", state.Version)
+	}
+}
+
+func TestUpdateRun_Manual_RunsSkillsSync(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.22", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	skillsCalled := false
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
+			DetectOverride: func() selfupdate.DetectResult {
+				return selfupdate.DetectResult{
+					Method:       selfupdate.InstallManual,
+					ResolvedPath: "/usr/local/bin/lark-cli",
+				}
+			},
+			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsCommand()(args...)
+			},
+		}
+	}
+
+	f, _, _ := newTestFactory(t)
+	opts := &UpdateOptions{Factory: f, JSON: true}
+	if err := updateRun(opts); err != nil {
+		t.Fatalf("updateRun() err = %v, want nil", err)
+	}
+	if !skillsCalled {
+		t.Error("skills sync not called in manual branch")
+	}
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.21" {
+		t.Errorf("state.Version = %q, want \"1.0.21\" (manual path records current binary)", state.Version)
+	}
+}
+
+func TestUpdateRun_Npm_RunsSkillsSync_WritesLatestState(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.22", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	skillsCalled := false
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
+			DetectOverride: func() selfupdate.DetectResult {
+				return selfupdate.DetectResult{
+					Method: selfupdate.InstallNpm, NpmAvailable: true,
+					ResolvedPath: "/usr/local/bin/lark-cli",
+				}
+			},
+			NpmInstallOverride: func(version string) *selfupdate.NpmResult {
+				return &selfupdate.NpmResult{}
+			},
+			VerifyOverride: func(expectedVersion string) error { return nil },
+			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsCommand()(args...)
+			},
+		}
+	}
+
+	f, _, _ := newTestFactory(t)
+	opts := &UpdateOptions{Factory: f, JSON: true}
+	if err := updateRun(opts); err != nil {
+		t.Fatalf("updateRun() err = %v, want nil", err)
+	}
+	if !skillsCalled {
+		t.Error("skills sync not called in npm branch")
+	}
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.22" {
+		t.Errorf("state.Version = %q, want \"1.0.22\" (npm path records latest binary)", state.Version)
+	}
+}
+
+func TestUpdateRun_CheckIncludesSkillsStatus(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{
+		Version:              "1.0.20",
+		OfficialSkills:       []string{"lark-calendar", "lark-mail"},
+		UpdatedSkills:        []string{"lark-calendar"},
+		SkippedDeletedSkills: []string{"lark-mail"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.22", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	skillsCalled := false
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			DetectOverride: func() selfupdate.DetectResult {
+				return selfupdate.DetectResult{Method: selfupdate.InstallNpm, NpmAvailable: true}
+			},
+			SkillsIndexFetchOverride: func() *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsIndexFetch()()
+			},
+			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsCommand()(args...)
+			},
+		}
+	}
+
+	f, stdout, _ := newTestFactory(t)
+	opts := &UpdateOptions{Factory: f, JSON: true, Check: true}
+	if err := updateRun(opts); err != nil {
+		t.Fatalf("updateRun(--check) err = %v, want nil", err)
+	}
+	if skillsCalled {
+		t.Error("skills sync called under --check, want skipped")
+	}
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\nstdout: %s", err, stdout.String())
+	}
+	status, ok := env["skills_status"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("skills_status missing or wrong type in --check JSON: %s", stdout.String())
+	}
+	if status["current"] != "1.0.20" || status["target"] != "1.0.21" || status["in_sync"] != false {
+		t.Errorf("skills_status = %+v, want {current:\"1.0.20\", target:\"1.0.21\", in_sync:false}", status)
+	}
+	if status["official"] != float64(2) || status["updated"] != float64(1) {
+		t.Errorf("skills_status counts = %+v, want official:2 updated:1", status)
+	}
+}
+
+func TestUpdateRun_CheckAlreadyLatest_NoSideEffect(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.20"}); err != nil {
+		t.Fatal(err)
+	}
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.21", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	skillsCalled := false
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: func() *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsIndexFetch()()
+			},
+			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsCommand()(args...)
+			},
+		}
+	}
+
+	f, stdout, _ := newTestFactory(t)
+	opts := &UpdateOptions{Factory: f, JSON: true, Check: true}
+	if err := updateRun(opts); err != nil {
+		t.Fatalf("updateRun(--check, already-latest) err = %v, want nil", err)
+	}
+	if skillsCalled {
+		t.Error("skills sync called under --check (already-latest), want skipped")
+	}
+
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.20" {
+		t.Errorf("state.Version mutated to %q under --check, want \"1.0.20\"", state.Version)
+	}
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\n%s", err, stdout.String())
+	}
+	if env["action"] != "already_up_to_date" {
+		t.Errorf("action = %v, want \"already_up_to_date\"", env["action"])
+	}
+	if _, has := env["skills_action"]; has {
+		t.Errorf("skills_action present under --check, want absent: %+v", env)
+	}
+	status, ok := env["skills_status"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("skills_status missing under --check + already-latest: %s", stdout.String())
+	}
+	if status["current"] != "1.0.20" || status["target"] != "1.0.21" || status["in_sync"] != false {
+		t.Errorf("skills_status = %+v, want {current:\"1.0.20\", target:\"1.0.21\", in_sync:false}", status)
+	}
+}
+
+func TestRunSkillsAndState_StateWriteFailureWarns(t *testing.T) {
+	origSync := syncSkills
+	syncSkills = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult {
+		return &skillscheck.SyncResult{Err: fmt.Errorf("skills synced but state not written: denied")}
+	}
+	t.Cleanup(func() { syncSkills = origSync })
+
+	f, _, stderr := newTestFactory(t)
+	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false)
+	if got == nil || got.Err == nil {
+		t.Fatalf("runSkillsAndState() = %+v, want non-nil with write error", got)
+	}
+	if !strings.Contains(stderr.String(), "warning: skills synced but state not written") {
+		t.Errorf("stderr does not contain warning: %q", stderr.String())
+	}
+}
+
+func TestEmitSkillsTextHints_Success(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	emitSkillsTextHints(f.IOStreams, &skillscheck.SyncResult{Official: []string{"lark-calendar"}, Updated: []string{"lark-calendar"}})
+	if !strings.Contains(stderr.String(), "Skills updated") {
+		t.Errorf("stderr does not contain 'Skills updated': %q", stderr.String())
+	}
+}
+
+// TestUpdateCommand_RealSkillsSyncRewritesState is a live integration test that
+// verifies "lark-cli update" correctly triggers skills sync and rewrites the
+// state file. It calls the real npx skills CLI, so the test is skipped when
+// npx or the skills registry is unavailable (e.g. no network or fork PRs).
+func TestUpdateCommand_RealSkillsSyncRewritesState(t *testing.T) {
+	// Phase 1: Verify the real npx skills CLI is available; skip otherwise.
+	if _, err := exec.LookPath("npx"); err != nil {
+		t.Skipf("npx not found in PATH: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "--list").Run(); err != nil {
+		t.Skipf("real skills CLI unavailable: %v", err)
+	}
+	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()
+	if err != nil {
+		t.Skipf("real global skills CLI unavailable: %v", err)
+	}
+	localSkills := skillscheck.ParseSkillsList(string(globalOut))
+	if err := ctx.Err(); err != nil {
+		t.Skipf("real skills CLI availability check timed out: %v", err)
+	}
+
+	// Phase 2: Seed a previous sync state simulating an upgrade from v1.0.19.
+	// lark-doc and lark-mail are recorded as skipped/deleted, meaning the user
+	// intentionally removed them while they were still official skills.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	before := skillscheck.SkillsState{
+		Version:              "1.0.19",
+		OfficialSkills:       []string{"lark-approval", "lark-attendance", "lark-base", "lark-calendar", "lark-contact", "lark-doc", "lark-drive", "lark-event", "lark-im", "lark-mail", "lark-markdown", "lark-minutes", "lark-okr", "lark-openapi-explorer", "lark-shared", "lark-sheets", "lark-skill-maker", "lark-slides", "lark-task", "lark-vc", "lark-vc-agent", "lark-whiteboard", "lark-wiki", "lark-workflow-meeting-summary", "lark-workflow-standup-report"},
+		UpdatedSkills:        []string{"lark-approval", "lark-apps", "lark-attendance", "lark-base", "lark-calendar", "lark-contact", "lark-doc", "lark-drive", "lark-event", "lark-im", "lark-mail", "lark-markdown", "lark-minutes", "lark-okr", "lark-openapi-explorer", "lark-shared", "lark-sheets", "lark-skill-maker", "lark-slides", "lark-task", "lark-vc", "lark-vc-agent", "lark-whiteboard", "lark-wiki", "lark-workflow-meeting-summary", "lark-workflow-standup-report"},
+		AddedOfficialSkills:  []string{},
+		SkippedDeletedSkills: []string{},
+		UpdatedAt:            "2026-05-20T00:00:00Z",
+	}
+	if err := skillscheck.WriteState(before); err != nil {
+		t.Fatal(err)
+	}
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() before update = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.19" {
+		t.Fatalf("state.Version before update = %q, want 1.0.19", state.Version)
+	}
+
+	// Phase 3: Mock version functions so the update command believes it has
+	// upgraded from 1.0.19 to 1.0.20, then execute "lark-cli update --json".
+	// This triggers SyncSkills which calls the real npx skills add command.
+	origFetch := fetchLatest
+	origVersion := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion })
+	fetchLatest = func() (string, error) { return "1.0.20", nil }
+	currentVersion = func() string { return "1.0.20" }
+
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("lark-cli update --json err = %v, want nil", err)
+	}
+
+	// Phase 4: Verify the state file was rewritten with the new version,
+	// non-empty official/updated skill lists, and a refreshed timestamp.
+	state, readable, err = skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() after update = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.20" {
+		t.Errorf("state.Version after update = %q, want 1.0.20", state.Version)
+	}
+	if len(state.OfficialSkills) == 0 {
+		t.Fatalf("state.OfficialSkills after real sync is empty: %+v", state)
+	}
+	if len(state.UpdatedSkills) == 0 {
+		t.Fatalf("state.UpdatedSkills after real sync is empty: %+v", state)
+	}
+	if state.UpdatedAt == "" || state.UpdatedAt == before.UpdatedAt {
+		t.Errorf("state.UpdatedAt = %q, want refreshed non-empty timestamp", state.UpdatedAt)
+	}
+	// Verify that previously-skipped skills are handled correctly:
+	//   - If locally installed  → should appear in UpdatedSkills (updated to latest)
+	//   - If locally absent    → should NOT be force-restored in UpdatedSkills,
+	//                            and should remain in SkippedDeletedSkills
+	for _, skill := range []string{"lark-doc", "lark-mail"} {
+		if containsString(localSkills, skill) {
+			if !containsString(state.UpdatedSkills, skill) {
+				t.Errorf("state.UpdatedSkills = %v, want installed skill %q updated", state.UpdatedSkills, skill)
+			}
+			continue
+		}
+		if containsString(state.UpdatedSkills, skill) {
+			t.Errorf("state.UpdatedSkills = %v, want deleted skill %q not restored without --force", state.UpdatedSkills, skill)
+		}
+		if !containsString(state.SkippedDeletedSkills, skill) {
+			t.Errorf("state.SkippedDeletedSkills = %v, want deleted skill %q preserved when still official", state.SkippedDeletedSkills, skill)
+		}
+	}
+
+	// Phase 5: Verify the JSON output structure is parseable and contains
+	// the expected action fields for AI agent consumption.
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\nstdout: %s", err, stdout.String())
+	}
+	if env["action"] != "already_up_to_date" {
+		t.Errorf("action = %v, want already_up_to_date", env["action"])
+	}
+	if env["skills_action"] != "synced" {
+		t.Errorf("skills_action = %v, want synced", env["skills_action"])
+	}
+}
+
+// TestUpdateCommand_SkillsSyncColdStart verifies that when skills-state.json does
+// not exist (cold start), the update command installs all official skills and
+// writes a fresh state file. No skill should appear in SkippedDeletedSkills
+// because there is no previous state to preserve user deletions from.
+// This is a live integration test that calls the real npx skills CLI; it is
+// skipped when npx or the skills registry is unavailable.
+func TestUpdateCommand_SkillsSyncColdStart(t *testing.T) {
+	// Phase 1: Verify the real npx skills CLI is available; skip otherwise.
+	if _, err := exec.LookPath("npx"); err != nil {
+		t.Skipf("npx not found in PATH: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "npx", "-y", "skills", "add", "https://open.feishu.cn", "--list").Run(); err != nil {
+		t.Skipf("real skills CLI unavailable: %v", err)
+	}
+	globalOut, err := exec.CommandContext(ctx, "npx", "-y", "skills", "ls", "-g").Output()
+	if err != nil {
+		t.Skipf("real global skills CLI unavailable: %v", err)
+	}
+	localSkills := skillscheck.ParseSkillsList(string(globalOut))
+	if err := ctx.Err(); err != nil {
+		t.Skipf("real skills CLI availability check timed out: %v", err)
+	}
+
+	// Phase 2: Use an isolated config dir with no pre-existing skills-state.json.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if _, readable, _ := skillscheck.ReadState(); readable {
+		t.Fatal("skills-state.json should not exist before update")
+	}
+
+	// Phase 3: Mock version functions so the update command believes it is at
+	// v1.0.20, then execute "lark-cli update --json". This triggers SyncSkills
+	// which calls the real npx skills add command.
+	origFetch := fetchLatest
+	origVersion := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion })
+	fetchLatest = func() (string, error) { return "1.0.20", nil }
+	currentVersion = func() string { return "1.0.20" }
+
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("lark-cli update --json err = %v, want nil", err)
+	}
+
+	// Phase 4: Verify the state file was created with all official skills in
+	// UpdatedSkills and nothing in SkippedDeletedSkills (cold start = no prior
+	// deletions to honor). Locally installed skills should appear in UpdatedSkills.
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() after update = (_, %v, %v), want readable", readable, err)
+	}
+	if state.Version != "1.0.20" {
+		t.Errorf("state.Version = %q, want 1.0.20", state.Version)
+	}
+	if len(state.OfficialSkills) == 0 {
+		t.Fatalf("state.OfficialSkills after real sync is empty: %+v", state)
+	}
+	if len(state.UpdatedSkills) == 0 {
+		t.Fatalf("state.UpdatedSkills after real sync is empty: %+v", state)
+	}
+	if state.UpdatedAt == "" {
+		t.Error("state.UpdatedAt is empty, want non-empty timestamp")
+	}
+	// All locally installed official skills must appear in UpdatedSkills.
+	officialSet := map[string]bool{}
+	for _, s := range state.OfficialSkills {
+		officialSet[s] = true
+	}
+	for _, skill := range localSkills {
+		if !officialSet[skill] {
+			continue
+		}
+		if !containsString(state.UpdatedSkills, skill) {
+			t.Errorf("state.UpdatedSkills = %v, want locally installed official skill %q updated", state.UpdatedSkills, skill)
+		}
+	}
+	// No skill should be in SkippedDeletedSkills on cold start — there is no
+	// previous state recording a user deletion to preserve.
+	if len(state.SkippedDeletedSkills) != 0 {
+		t.Errorf("state.SkippedDeletedSkills = %v, want empty on cold start", state.SkippedDeletedSkills)
+	}
+
+	// Phase 5: Verify the JSON output structure is parseable and contains
+	// the expected action fields for AI agent consumption.
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\nstdout: %s", err, stdout.String())
+	}
+	if env["action"] != "already_up_to_date" {
+		t.Errorf("action = %v, want already_up_to_date", env["action"])
+	}
+	if env["skills_action"] != "synced" {
+		t.Errorf("skills_action = %v, want synced", env["skills_action"])
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

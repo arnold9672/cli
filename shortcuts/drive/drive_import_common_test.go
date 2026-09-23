@@ -5,35 +5,86 @@ package drive
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
-func TestValidateDriveImportSpecRejectsMismatchedType(t *testing.T) {
+func TestValidateDriveImportSpec(t *testing.T) {
 	t.Parallel()
 
-	err := validateDriveImportSpec(driveImportSpec{
-		FilePath: "./data.xlsx",
-		DocType:  "docx",
-	})
-	if err == nil || !strings.Contains(err.Error(), "file type mismatch") {
-		t.Fatalf("expected file type mismatch error, got %v", err)
+	tests := []struct {
+		name    string
+		spec    driveImportSpec
+		wantErr string
+	}{
+		{
+			name:    "xlsx as docx rejected",
+			spec:    driveImportSpec{FilePath: "./data.xlsx", DocType: "docx"},
+			wantErr: "file type mismatch",
+		},
+		{
+			name:    "xls bitable rejected",
+			spec:    driveImportSpec{FilePath: "./data.xls", DocType: "bitable"},
+			wantErr: ".xls files can only be imported as 'sheet'",
+		},
+		{
+			name: "base bitable ok",
+			spec: driveImportSpec{FilePath: "./snapshot.base", DocType: "bitable"},
+		},
+		{
+			name: "pptx slides ok",
+			spec: driveImportSpec{FilePath: "./deck.pptx", DocType: "slides"},
+		},
+		{
+			name:    "base non bitable rejected",
+			spec:    driveImportSpec{FilePath: "./snapshot.base", DocType: "sheet"},
+			wantErr: ".base files can only be imported as 'bitable'",
+		},
+		{
+			name:    "pptx non slides rejected",
+			spec:    driveImportSpec{FilePath: "./deck.pptx", DocType: "docx"},
+			wantErr: ".pptx files can only be imported as 'slides'",
+		},
+		{
+			name:    "unknown extension rejected",
+			spec:    driveImportSpec{FilePath: "./data.rtf", DocType: "docx"},
+			wantErr: "unsupported file extension",
+		},
+		{
+			name:    "target-token rejected for non-bitable type",
+			spec:    driveImportSpec{FilePath: "./data.xlsx", DocType: "sheet", TargetToken: "bascnxxx"},
+			wantErr: "--target-token is only supported when --type is bitable",
+		},
+		{
+			name: "target-token accepted for bitable",
+			spec: driveImportSpec{FilePath: "./data.xlsx", DocType: "bitable", TargetToken: "bascnxxx"},
+		},
+		{
+			name: "target-token empty for bitable still ok",
+			spec: driveImportSpec{FilePath: "./data.xlsx", DocType: "bitable"},
+		},
 	}
-}
 
-func TestValidateDriveImportSpecRejectsXlsBitable(t *testing.T) {
-	t.Parallel()
-
-	err := validateDriveImportSpec(driveImportSpec{
-		FilePath: "./data.xls",
-		DocType:  "bitable",
-	})
-	if err == nil || !strings.Contains(err.Error(), ".xls files can only be imported as 'sheet'") {
-		t.Fatalf("expected xls-only-sheet validation error, got %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateDriveImportSpec(tt.spec)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -73,6 +124,32 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 			filePath: "./data.xlsx",
 			docType:  "sheet",
 			fileSize: driveImport800MBFileSizeLimit,
+		},
+		{
+			name:     "pptx exceeds 500mb limit",
+			filePath: "./deck.pptx",
+			docType:  "slides",
+			fileSize: driveImport500MBFileSizeLimit + 1,
+			wantText: "exceeds 500.0 MB import limit for .pptx",
+		},
+		{
+			name:     "pptx within 500mb limit",
+			filePath: "./deck.pptx",
+			docType:  "slides",
+			fileSize: driveImport500MBFileSizeLimit,
+		},
+		{
+			name:     "base exceeds 20mb limit",
+			filePath: "./snapshot.base",
+			docType:  "bitable",
+			fileSize: driveImport20MBFileSizeLimit + 1,
+			wantText: "exceeds 20.0 MB import limit for .base",
+		},
+		{
+			name:     "base within 20mb limit",
+			filePath: "./snapshot.base",
+			docType:  "bitable",
+			fileSize: driveImport20MBFileSizeLimit,
 		},
 	}
 
@@ -201,6 +278,134 @@ func TestDriveImportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	}
 }
 
+func TestDriveImportRejectsWikiFolderToken(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"node_token": "wikcnImportTarget",
+					"obj_type":   "docx",
+					"obj_token":  "docxImportTarget",
+					"title":      "Wiki Import Target",
+				},
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("notes.md", []byte("# Hi"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "notes.md",
+		"--type", "docx",
+		"--folder-token", "wikcnImportTarget",
+		"--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected wiki folder-token validation error, got nil")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if validationErr.Param != "--folder-token" {
+		t.Fatalf("param = %q, want --folder-token", validationErr.Param)
+	}
+	wantMessage := "--folder-token only supports Drive folder tokens, but the provided token resolves to a wiki node"
+	if validationErr.Message != wantMessage {
+		t.Fatalf("message = %q, want %q", validationErr.Message, wantMessage)
+	}
+	for _, disallowed := range []string{"node_token=", "obj_type=", "Wiki Import Target"} {
+		if strings.Contains(validationErr.Message, disallowed) {
+			t.Fatalf("message = %q, must not contain %q", validationErr.Message, disallowed)
+		}
+	}
+	if !strings.Contains(validationErr.Hint, "Drive folder token") {
+		t.Fatalf("hint = %q, want Drive folder token guidance", validationErr.Hint)
+	}
+}
+
+func TestDriveImportContinuesWhenFolderTokenDoesNotResolveAsWiki(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 1310001,
+			"msg":  "node not found",
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_import_media"},
+		},
+	})
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/import_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_import_folder"},
+		},
+	}
+	reg.Register(createStub)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/import_tasks/tk_import_folder",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{
+					"type":       "docx",
+					"job_status": 0,
+					"token":      "docx_imported",
+				},
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("notes.md", []byte("# Hi"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "notes.md",
+		"--type", "docx",
+		"--folder-token", "fldcnImportTarget",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got := data["token"]; got != "docx_imported" {
+		t.Fatalf("token = %#v, want docx_imported", got)
+	}
+	body := decodeCapturedJSONBody(t, createStub)
+	point, _ := body["point"].(map[string]interface{})
+	if got := point["mount_key"]; got != "fldcnImportTarget" {
+		t.Fatalf("import mount_key = %#v, want fldcnImportTarget", got)
+	}
+}
+
 func TestDriveImportRejectsOversizedFileByImportLimit(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -218,6 +423,27 @@ func TestDriveImportRejectsOversizedFileByImportLimit(t *testing.T) {
 		t.Fatal("expected size limit error, got nil")
 	}
 	if !strings.Contains(err.Error(), "exceeds 100.0 MB import limit for .csv when importing as bitable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDriveImportRejectsOversizedBaseFile(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	writeSizedDriveImportFile(t, "too-large.base", driveImport20MBFileSizeLimit+1)
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "too-large.base",
+		"--type", "bitable",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected size limit error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds 20.0 MB import limit for .base") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

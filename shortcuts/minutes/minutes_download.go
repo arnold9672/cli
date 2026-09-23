@@ -5,19 +5,23 @@ package minutes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const (
@@ -43,21 +47,38 @@ var MinutesDownload = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch download (max 50)", Required: true},
-		{Name: "output", Desc: "output path: file path for single token, directory for batch (default: current dir)"},
+		{Name: "output", Desc: "output file path (single token)"},
+		{Name: "output-dir", Desc: "output directory (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 		{Name: "url-only", Type: "bool", Desc: "only print the download URL(s) without downloading"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		tokens := common.SplitCSV(runtime.Str("minute-tokens"))
 		if len(tokens) == 0 {
-			return output.ErrValidation("--minute-tokens is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--minute-tokens is required").WithParam("--minute-tokens")
 		}
 		if len(tokens) > maxBatchSize {
-			return output.ErrValidation("--minute-tokens: too many tokens (%d), maximum is %d", len(tokens), maxBatchSize)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--minute-tokens: too many tokens (%d), maximum is %d", len(tokens), maxBatchSize).WithParam("--minute-tokens")
 		}
 		for _, token := range tokens {
 			if !validMinuteToken.MatchString(token) {
-				return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters (e.g. obcnq3b9jl72l83w4f149w9c)", token)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid minute token %q: must contain only lowercase alphanumeric characters (e.g. obcnq3b9jl72l83w4f149w9c)", token).WithParam("--minute-tokens")
+			}
+		}
+		// Cheap checks first, then path-safety resolution.
+		out := runtime.Str("output")
+		outDir := runtime.Str("output-dir")
+		if out != "" && outDir != "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output and --output-dir cannot both be set").WithParam("--output")
+		}
+		if out != "" {
+			if err := common.ValidateSafePathTyped(runtime.FileIO(), out); err != nil {
+				return err
+			}
+		}
+		if outDir != "" {
+			if err := common.ValidateSafePathTyped(runtime.FileIO(), outDir); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -70,29 +91,54 @@ var MinutesDownload = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		tokens := common.SplitCSV(runtime.Str("minute-tokens"))
-		outputPath := runtime.Str("output")
+		rawOutput := runtime.Str("output")
+		rawOutputDir := runtime.Str("output-dir")
 		overwrite := runtime.Bool("overwrite")
 		urlOnly := runtime.Bool("url-only")
 		errOut := runtime.IO().ErrOut
 		single := len(tokens) == 1
 
-		// Batch mode: --output must be a directory, not an existing file.
-		if !single && outputPath != "" {
-			if fi, err := runtime.FileIO().Stat(outputPath); err == nil && !fi.IsDir() {
-				return output.ErrValidation("--output %q is a file; batch mode expects a directory path", outputPath)
+		// Re-interpret --output based on what the path points to. An existing
+		// directory is promoted to --output-dir so single-token cp semantics
+		// work. An existing file is rejected in batch mode (the flag carries
+		// directory semantics there). Unknown filesystem errors are surfaced
+		// eagerly rather than deferred to Save.
+		explicitOutputPath := rawOutput
+		explicitOutputDir := rawOutputDir
+		if explicitOutputPath != "" {
+			fi, statErr := runtime.FileIO().Stat(explicitOutputPath)
+			switch {
+			case statErr == nil && fi.IsDir():
+				explicitOutputDir = explicitOutputPath
+				explicitOutputPath = ""
+			case statErr == nil && !fi.IsDir():
+				if !single {
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output %q is a file; batch mode expects a directory (use --output-dir)", explicitOutputPath).WithParam("--output")
+				}
+			case errors.Is(statErr, fs.ErrNotExist):
+				if !single {
+					explicitOutputDir = explicitOutputPath
+					explicitOutputPath = ""
+				}
+			default:
+				return errs.NewInternalError(errs.SubtypeFileIO, "cannot access --output %q: %s", explicitOutputPath, statErr).WithCause(statErr)
 			}
 		}
+
+		useDefaultLayout := explicitOutputPath == "" && explicitOutputDir == ""
 
 		if !single {
 			fmt.Fprintf(errOut, "[minutes +download] batch: %d token(s)\n", len(tokens))
 		}
 
 		type result struct {
-			MinuteToken string `json:"minute_token"`
-			SavedPath   string `json:"saved_path,omitempty"`
-			SizeBytes   int64  `json:"size_bytes,omitempty"`
-			DownloadURL string `json:"download_url,omitempty"`
-			Error       string `json:"error,omitempty"`
+			MinuteToken  string `json:"minute_token"`
+			ArtifactType string `json:"artifact_type,omitempty"`
+			SavedPath    string `json:"saved_path,omitempty"`
+			SizeBytes    int64  `json:"size_bytes,omitempty"`
+			DownloadURL  string `json:"download_url,omitempty"`
+			Error        string `json:"error,omitempty"`
+			err          error  // raw typed error for single-mode passthrough
 		}
 
 		results := make([]result, len(tokens))
@@ -107,18 +153,18 @@ var MinutesDownload = common.Shortcut{
 		// download URLs originate from the trusted Lark API, not user input.
 		baseClient, err := runtime.Factory.HttpClient()
 		if err != nil {
-			return output.ErrNetwork("failed to get HTTP client: %s", err)
+			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to get HTTP client: %s", err).WithCause(err)
 		}
 		clonedClient := *baseClient
 		clonedClient.Timeout = disableClientTimeout
 		clonedClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxDownloadRedirects {
-				return fmt.Errorf("too many redirects")
+				return fmt.Errorf("too many redirects") //nolint:forbidigo // returned to net/http CheckRedirect, not a CLI terminal error
 			}
 			if len(via) > 0 {
 				prev := via[len(via)-1]
 				if strings.EqualFold(prev.URL.Scheme, "https") && strings.EqualFold(req.URL.Scheme, "http") {
-					return fmt.Errorf("redirect from https to http is not allowed")
+					return fmt.Errorf("redirect from https to http is not allowed") //nolint:forbidigo // returned to net/http CheckRedirect, not a CLI terminal error
 				}
 			}
 			return validate.ValidateDownloadSourceURL(req.Context(), req.URL.String())
@@ -149,7 +195,7 @@ var MinutesDownload = common.Shortcut{
 
 			downloadURL, err := fetchDownloadURL(ctx, runtime, token)
 			if err != nil {
-				results[i] = result{MinuteToken: token, Error: err.Error()}
+				results[i] = result{MinuteToken: token, Error: err.Error(), err: err}
 				continue
 			}
 
@@ -160,32 +206,54 @@ var MinutesDownload = common.Shortcut{
 
 			fmt.Fprintf(errOut, "Downloading media: %s\n", common.MaskToken(token))
 
-			// single token: --output is a file path; batch: --output is a directory
-			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite, usedNames: usedNames}
-			if single {
-				opts.outputPath = outputPath
-			} else {
-				opts.outputDir = outputPath
+			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite}
+			switch {
+			case useDefaultLayout:
+				// Per-token subdirectory guarantees unique paths, so no dedup map.
+				opts.outputDir = common.DefaultMinuteArtifactDir(token)
+			case explicitOutputPath != "" && single:
+				opts.outputPath = explicitOutputPath
+			default:
+				opts.outputDir = explicitOutputDir
+				if !single {
+					opts.usedNames = usedNames
+				}
 			}
 
 			dl, err := downloadMediaFile(ctx, dlClient, downloadURL, token, opts)
 			if err != nil {
-				results[i] = result{MinuteToken: token, Error: err.Error()}
+				results[i] = result{MinuteToken: token, Error: err.Error(), err: err}
 				continue
 			}
-			results[i] = result{MinuteToken: token, SavedPath: dl.savedPath, SizeBytes: dl.sizeBytes}
+			results[i] = result{
+				MinuteToken:  token,
+				ArtifactType: common.ArtifactTypeRecording,
+				SavedPath:    dl.savedPath,
+				SizeBytes:    dl.sizeBytes,
+			}
 		}
 
 		// output
 		if single {
 			r := results[0]
 			if r.Error != "" {
-				return output.ErrAPI(0, r.Error, nil)
+				if r.err != nil {
+					return r.err // typed error from fetchDownloadURL/downloadMediaFile, exit code preserved
+				}
+				return runtime.OutPartialFailure(map[string]interface{}{"downloads": results}, &output.Meta{Count: len(results)})
 			}
 			if urlOnly {
-				runtime.Out(map[string]interface{}{"download_url": r.DownloadURL}, nil)
+				runtime.Out(map[string]interface{}{
+					"minute_token": r.MinuteToken,
+					"download_url": r.DownloadURL,
+				}, nil)
 			} else {
-				runtime.Out(map[string]interface{}{"saved_path": r.SavedPath, "size_bytes": r.SizeBytes}, nil)
+				runtime.Out(map[string]interface{}{
+					"minute_token":  r.MinuteToken,
+					"artifact_type": r.ArtifactType,
+					"saved_path":    r.SavedPath,
+					"size_bytes":    r.SizeBytes,
+				}, nil)
 			}
 			return nil
 		}
@@ -199,17 +267,19 @@ var MinutesDownload = common.Shortcut{
 		}
 		fmt.Fprintf(errOut, "[minutes +download] done: %d total, %d succeeded, %d failed\n", len(results), successCount, len(results)-successCount)
 
-		runtime.OutFormat(map[string]interface{}{"downloads": results}, &output.Meta{Count: len(results)}, nil)
+		outData := map[string]interface{}{"downloads": results}
+		meta := &output.Meta{Count: len(results)}
 		if successCount == 0 && len(results) > 0 {
-			return output.ErrAPI(0, fmt.Sprintf("all %d downloads failed", len(results)), nil)
+			return runtime.OutPartialFailure(outData, meta)
 		}
+		runtime.OutFormat(outData, meta, nil)
 		return nil
 	},
 }
 
 // fetchDownloadURL retrieves the pre-signed download URL for a minute token.
 func fetchDownloadURL(ctx context.Context, runtime *common.RuntimeContext, minuteToken string) (string, error) {
-	data, err := runtime.DoAPIJSON(http.MethodGet,
+	data, err := runtime.CallAPITyped(http.MethodGet,
 		fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/media", validate.EncodePathSegment(minuteToken)),
 		nil, nil)
 	if err != nil {
@@ -217,7 +287,7 @@ func fetchDownloadURL(ctx context.Context, runtime *common.RuntimeContext, minut
 	}
 	downloadURL := common.GetString(data, "download_url")
 	if downloadURL == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "API returned empty download_url for %s", minuteToken)
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned empty download_url for %s", minuteToken)
 	}
 	return downloadURL, nil
 }
@@ -230,7 +300,7 @@ type downloadResult struct {
 type downloadOpts struct {
 	fio        fileio.FileIO // file I/O abstraction
 	outputPath string        // explicit output file path (single mode only)
-	outputDir  string        // output directory (batch mode)
+	outputDir  string        // output directory (single or batch)
 	overwrite  bool
 	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
 }
@@ -239,26 +309,26 @@ type downloadOpts struct {
 // Filename resolution: opts.outputPath > Content-Disposition filename > Content-Type ext > <token>.media.
 func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, minuteToken string, opts downloadOpts) (*downloadResult, error) {
 	if err := validate.ValidateDownloadSourceURL(ctx, downloadURL); err != nil {
-		return nil, output.ErrValidation("blocked download URL: %s", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "blocked download URL: %s", err).WithCause(err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
-		return nil, output.ErrNetwork("invalid download URL: %s", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL: %s", err).WithCause(err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, output.ErrNetwork("download failed: %s", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: %s", err).WithCause(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if len(body) > 0 {
-			return nil, output.ErrNetwork("download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 		}
-		return nil, output.ErrNetwork("download failed: HTTP %d", resp.StatusCode)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d", resp.StatusCode)
 	}
 
 	// resolve output path
@@ -277,7 +347,7 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 
 	if !opts.overwrite {
 		if _, statErr := opts.fio.Stat(outputPath); statErr == nil {
-			return nil, output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
+			return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "output file already exists: %s (use --overwrite to replace)", outputPath)
 		}
 	}
 
@@ -286,7 +356,7 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 		ContentLength: resp.ContentLength,
 	}, resp.Body)
 	if err != nil {
-		return nil, common.WrapSaveErrorByCategory(err, "io")
+		return nil, common.WrapSaveErrorTyped(err)
 	}
 	resolvedPath, err := opts.fio.ResolvePath(outputPath)
 	if err != nil || resolvedPath == "" {
@@ -300,7 +370,7 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string {
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
-			if filename := params["filename"]; filename != "" {
+			if filename := sanitizeServerFilename(params["filename"]); filename != "" {
 				return filename
 			}
 		}
@@ -309,6 +379,20 @@ func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string
 		return minuteToken + ext
 	}
 	return minuteToken + ".media"
+}
+
+// sanitizeServerFilename reduces a server-provided filename to its basename,
+// defending against Content-Disposition payloads that embed directory
+// separators (e.g. "../other.mp4") and would otherwise escape the intended
+// artifact directory after filepath.Join. Empty or dot-only names return ""
+// so the caller can fall back to the next naming strategy.
+func sanitizeServerFilename(filename string) string {
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = path.Base(filename)
+	if filename == "" || filename == "." || filename == ".." {
+		return ""
+	}
+	return filename
 }
 
 // preferredExt overrides Go's mime.ExtensionsByType which returns alphabetically sorted

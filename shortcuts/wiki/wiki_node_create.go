@@ -6,12 +6,15 @@ package wiki
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const (
@@ -22,6 +25,16 @@ const (
 	wikiResolvedByExplicitSpaceID = "explicit_space_id"
 	wikiResolvedByParentNode      = "parent_node_token"
 	wikiResolvedByMyLibrary       = "my_library"
+)
+
+const (
+	// wikiNodeCreateMaxRetries is the maximum number of retry attempts after
+	// the initial request when the API returns lock contention (code 131009).
+	wikiNodeCreateMaxRetries = 2
+
+	// wikiNodeCreateRetryBaseDelay is the initial backoff delay for lock
+	// contention retries. Subsequent retries double the delay (250ms, 500ms).
+	wikiNodeCreateRetryBaseDelay = 250 * time.Millisecond
 )
 
 var wikiObjectTypes = []string{
@@ -68,7 +81,7 @@ var WikiNodeCreate = common.Shortcut{
 		spec := readWikiNodeCreateSpec(runtime)
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Creating wiki node...\n")
-		execution, err := runWikiNodeCreate(ctx, wikiNodeCreateAPI{runtime: runtime}, runtime.As(), spec)
+		execution, err := runWikiNodeCreate(ctx, wikiNodeCreateAPI{runtime: runtime}, runtime.As(), spec, runtime.IO().ErrOut)
 		if err != nil {
 			return err
 		}
@@ -118,6 +131,7 @@ type wikiNodeRecord struct {
 	OriginNodeToken string
 	Title           string
 	HasChild        bool
+	URL             string
 }
 
 // wikiSpaceRecord contains the response fields used when resolving spaces.
@@ -156,7 +170,7 @@ type wikiNodeCreateAPI struct {
 }
 
 func (api wikiNodeCreateAPI) GetNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"GET",
 		"/open-apis/wiki/v2/spaces/get_node",
 		map[string]interface{}{"token": token},
@@ -169,7 +183,7 @@ func (api wikiNodeCreateAPI) GetNode(ctx context.Context, token string) (*wikiNo
 }
 
 func (api wikiNodeCreateAPI) GetSpace(ctx context.Context, spaceID string) (*wikiSpaceRecord, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/spaces/%s", validate.EncodePathSegment(spaceID)),
 		nil,
@@ -182,7 +196,7 @@ func (api wikiNodeCreateAPI) GetSpace(ctx context.Context, spaceID string) (*wik
 }
 
 func (api wikiNodeCreateAPI) CreateNode(ctx context.Context, spaceID string, spec wikiNodeCreateSpec) (*wikiNodeRecord, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"POST",
 		fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", validate.EncodePathSegment(spaceID)),
 		nil,
@@ -217,22 +231,26 @@ func validateWikiNodeCreateSpec(spec wikiNodeCreateSpec, identity core.Identity)
 	}
 
 	if spec.NodeType == wikiNodeTypeShortcut && spec.OriginNodeToken == "" {
-		return output.ErrValidation("--origin-node-token is required when --node-type=shortcut")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--origin-node-token is required when --node-type=shortcut").WithParam("--origin-node-token")
 	}
 	if spec.NodeType != wikiNodeTypeShortcut && spec.OriginNodeToken != "" {
-		return output.ErrValidation("--origin-node-token can only be used when --node-type=shortcut")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--origin-node-token can only be used when --node-type=shortcut").WithParam("--origin-node-token")
 	}
 
 	// Bot identity has no meaningful "personal document library" target, so
 	// my_library must be rejected explicitly instead of deferring to API-time
 	// resolution errors.
 	if identity.IsBot() && spec.SpaceID == wikiMyLibrarySpaceID {
-		return output.ErrValidation("bot identity does not support --space-id my_library; use an explicit --space-id or --parent-node-token")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity does not support --space-id my_library; use an explicit --space-id or --parent-node-token").WithParam("--space-id")
 	}
 	// Bot identity also cannot fall back implicitly, so it requires an explicit
 	// target or a parent it can resolve from.
 	if identity.IsBot() && spec.SpaceID == "" && spec.ParentNodeToken == "" {
-		return output.ErrValidation("bot identity requires --space-id or --parent-node-token")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity requires --space-id or --parent-node-token").
+			WithParams(
+				errs.InvalidParam{Name: "--space-id", Reason: "provide --space-id or --parent-node-token for bot identity"},
+				errs.InvalidParam{Name: "--parent-node-token", Reason: "provide --space-id or --parent-node-token for bot identity"},
+			)
 	}
 
 	return nil
@@ -287,24 +305,77 @@ func needsMyLibraryLookup(spec wikiNodeCreateSpec) bool {
 	return spec.SpaceID == "" || spec.SpaceID == wikiMyLibrarySpaceID
 }
 
-func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec) (*wikiNodeCreateExecution, error) {
+func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec, errOut io.Writer) (*wikiNodeCreateExecution, error) {
 	resolvedSpace, err := resolveWikiNodeCreateSpace(ctx, client, identity, spec)
 	if err != nil {
 		return nil, err
 	}
 
-	node, err := client.CreateNode(ctx, resolvedSpace.SpaceID, spec)
-	if err != nil {
-		return nil, err
+	var (
+		node    *wikiNodeRecord
+		lastErr error
+	)
+	for attempt := 0; attempt <= wikiNodeCreateMaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := wikiNodeCreateRetryBaseDelay << uint(attempt-1)
+			fmt.Fprintf(errOut, "Wiki node create encountered lock contention, retrying (attempt %d/%d) in %v...\n", attempt, wikiNodeCreateMaxRetries, delay)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		node, lastErr = client.CreateNode(ctx, resolvedSpace.SpaceID, spec)
+		if lastErr == nil {
+			break
+		}
+		if !isWikiNodeLockContention(lastErr) {
+			return nil, lastErr
+		}
+	}
+	if lastErr != nil {
+		return nil, wrapWikiNodeCreateRetryError(lastErr)
 	}
 	if node == nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki node create returned no node")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node create returned no node")
 	}
 
 	return &wikiNodeCreateExecution{
 		Node:          node,
 		ResolvedSpace: resolvedSpace,
 	}, nil
+}
+
+// isWikiNodeLockContention returns true if the error is a Lark API error with
+// code 131009 (wiki node lock contention), which is retryable with backoff.
+func isWikiNodeLockContention(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	return p.Code == output.LarkErrWikiLockContention
+}
+
+// wrapWikiNodeCreateRetryError appends a retry-exhaustion hint to the original
+// API error in place, preserving its typed category / subtype / code / log_id.
+func wrapWikiNodeCreateRetryError(err error) error {
+	if err == nil {
+		return nil
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	hint := fmt.Sprintf(
+		"wiki node create failed after %d retries due to lock contention; try again later or reduce concurrent node creations under the same parent",
+		wikiNodeCreateMaxRetries,
+	)
+	if existing := strings.TrimSpace(p.Hint); existing != "" {
+		hint = existing + "\n" + hint
+	}
+	p.Hint = hint
+	return err
 }
 
 // resolveWikiNodeCreateSpace applies the shortcut's precedence rules:
@@ -317,7 +388,11 @@ func resolveWikiNodeCreateSpace(ctx context.Context, client wikiNodeCreateClient
 		return resolveWikiNodeCreateSpaceFromParentNode(ctx, client, spec.ParentNodeToken)
 	}
 	if identity.IsBot() {
-		return wikiResolvedSpace{}, output.ErrValidation("bot identity requires --space-id or --parent-node-token")
+		return wikiResolvedSpace{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity requires --space-id or --parent-node-token").
+			WithParams(
+				errs.InvalidParam{Name: "--space-id", Reason: "provide --space-id or --parent-node-token for bot identity"},
+				errs.InvalidParam{Name: "--parent-node-token", Reason: "provide --space-id or --parent-node-token for bot identity"},
+			)
 	}
 	return resolveWikiNodeCreateSpaceFromMyLibrary(ctx, client)
 }
@@ -354,12 +429,12 @@ func resolveWikiNodeCreateSpaceFromExplicitSpace(ctx context.Context, client wik
 		return wikiResolvedSpace{}, err
 	}
 	if parentSpaceID != resolved.SpaceID {
-		return wikiResolvedSpace{}, output.ErrValidation(
+		return wikiResolvedSpace{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--space-id %q does not match parent node space %q (resolved space: %q)",
 			spec.SpaceID,
 			parentSpaceID,
 			resolved.SpaceID,
-		)
+		).WithParam("--space-id")
 	}
 
 	resolved.ParentNode = parent
@@ -403,14 +478,34 @@ func requireWikiNodeSpaceID(node *wikiNodeRecord) (string, error) {
 	if node != nil && node.SpaceID != "" {
 		return node.SpaceID, nil
 	}
-	return "", output.Errorf(output.ExitAPI, "api_error", "wiki node lookup returned no space_id")
+	return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node lookup returned no space_id")
 }
 
 func requireWikiSpaceID(space *wikiSpaceRecord) (string, error) {
 	if space != nil && space.SpaceID != "" {
 		return space.SpaceID, nil
 	}
-	return "", output.ErrValidation("personal document library was not found, please specify --space-id")
+	return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "personal document library lookup returned no space_id").
+		WithHint("specify --space-id explicitly to target a space directly")
+}
+
+// resolveMyLibrarySpaceID calls GET /wiki/v2/spaces/my_library and returns
+// the per-user real space_id. Shared by shortcuts that accept the my_library
+// alias (e.g. +node-create, +node-list) so the behavior stays consistent.
+func resolveMyLibrarySpaceID(runtime *common.RuntimeContext) (string, error) {
+	data, err := runtime.CallAPITyped(
+		"GET",
+		fmt.Sprintf("/open-apis/wiki/v2/spaces/%s", validate.EncodePathSegment(wikiMyLibrarySpaceID)),
+		nil, nil,
+	)
+	if err != nil {
+		return "", err
+	}
+	space, err := parseWikiSpaceRecord(common.GetMap(data, "space"))
+	if err != nil {
+		return "", err
+	}
+	return requireWikiSpaceID(space)
 }
 
 func validateOptionalResourceName(value, flagName string) error {
@@ -418,14 +513,14 @@ func validateOptionalResourceName(value, flagName string) error {
 		return nil
 	}
 	if err := validate.ResourceName(value, flagName); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam(flagName).WithCause(err)
 	}
 	return nil
 }
 
 func parseWikiNodeRecord(node map[string]interface{}) (*wikiNodeRecord, error) {
 	if node == nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki node response missing node")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node response missing node")
 	}
 	return &wikiNodeRecord{
 		SpaceID:         common.GetString(node, "space_id"),
@@ -437,12 +532,13 @@ func parseWikiNodeRecord(node map[string]interface{}) (*wikiNodeRecord, error) {
 		OriginNodeToken: common.GetString(node, "origin_node_token"),
 		Title:           common.GetString(node, "title"),
 		HasChild:        common.GetBool(node, "has_child"),
+		URL:             common.GetString(node, "url"),
 	}, nil
 }
 
 func parseWikiSpaceRecord(space map[string]interface{}) (*wikiSpaceRecord, error) {
 	if space == nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki space response missing space")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki space response missing space")
 	}
 	return &wikiSpaceRecord{
 		SpaceID:     common.GetString(space, "space_id"),
@@ -478,6 +574,9 @@ func augmentWikiNodeCreateOutput(runtime *common.RuntimeContext, execution *wiki
 	out := wikiNodeCreateOutput(execution)
 	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, execution.Node.NodeToken, "wiki"); grant != nil {
 		out["permission_grant"] = grant
+	}
+	if u := wikiNodeURL(runtime.Config.Brand, execution.Node); u != "" {
+		out["url"] = u
 	}
 	return out
 }

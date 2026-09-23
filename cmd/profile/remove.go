@@ -9,10 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	larkauth "code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // NewCmdProfileRemove creates the profile remove subcommand.
@@ -28,22 +29,24 @@ func NewCmdProfileRemove(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetTips(cmd, []string{
 		"AI agents: Do NOT remove profiles unless the user explicitly asks. This is destructive and clears all associated credentials.",
 	})
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 
 func profileRemoveRun(f *cmdutil.Factory, name string) error {
-	multi, err := core.LoadMultiAppConfig()
+	multi, err := core.LoadOrNotConfigured()
 	if err != nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "not configured", "run: lark-cli config init")
+		return err
 	}
 
 	idx := multi.FindAppIndex(name)
 	if idx < 0 {
-		return output.ErrValidation("profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
 	}
 
 	if len(multi.Apps) == 1 {
-		return output.ErrValidation("cannot remove the only profile")
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "cannot remove the only profile").
+			WithHint("add another profile first: lark-cli profile add")
 	}
 
 	app := &multi.Apps[idx]
@@ -64,7 +67,7 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	// Best-effort credential cleanup after config commit

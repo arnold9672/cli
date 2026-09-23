@@ -5,16 +5,14 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 const (
@@ -72,22 +70,15 @@ var SearchTasklist = common.Shortcut{
 		var rawItems []interface{}
 		var lastPageToken string
 		var lastHasMore bool
+		var notice string
 		currentBody := body
 		for page := 0; page < pageLimit; page++ {
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod: http.MethodPost,
-				ApiPath:    "/open-apis/task/v2/tasklists/search",
-				Body:       currentBody,
-			})
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse tasklist search")
-				}
-			}
-			data, err := HandleTaskApiResult(result, err, "search tasklists")
+			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasklists/search", nil, currentBody)
 			if err != nil {
 				return err
+			}
+			if notice == "" {
+				notice, _ = data["notice"].(string)
 			}
 			items, _ := data["items"].([]interface{})
 			rawItems = append(rawItems, items...)
@@ -131,6 +122,9 @@ var SearchTasklist = common.Shortcut{
 			"page_token": lastPageToken,
 			"has_more":   lastHasMore,
 		}
+		if notice != "" {
+			outData["notice"] = notice
+		}
 		runtime.OutFormat(outData, &output.Meta{Count: len(tasklists)}, func(w io.Writer) {
 			if len(tasklists) == 0 {
 				fmt.Fprintln(w, "No tasklists found.")
@@ -160,7 +154,7 @@ func buildTasklistSearchBody(runtime *common.RuntimeContext) (map[string]interfa
 	if createTime := runtime.Str("create-time"); createTime != "" {
 		start, end, err := parseTimeRangeRFC3339(createTime)
 		if err != nil {
-			return nil, WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid create-time: %v", err), "build tasklist search")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid create-time: %v", err).WithParam("--create-time")
 		}
 		if timeFilter := buildTimeRangeFilter("create_time", start, end); timeFilter != nil {
 			mergeIntoFilter(filter, timeFilter)
@@ -183,27 +177,15 @@ func buildTasklistSearchBody(runtime *common.RuntimeContext) (map[string]interfa
 }
 
 func getTasklistDetail(runtime *common.RuntimeContext, tasklistID string) (map[string]interface{}, error) {
-	queryParams := make(larkcore.QueryParams)
-	queryParams.Set("user_id_type", "open_id")
+	params := map[string]interface{}{"user_id_type": "open_id"}
 
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod:  http.MethodGet,
-		ApiPath:     "/open-apis/task/v2/tasklists/" + url.PathEscape(tasklistID),
-		QueryParams: queryParams,
-	})
-	var result map[string]interface{}
-	if err == nil {
-		if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-			return nil, WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse tasklist detail response: %v", parseErr), "parse tasklist detail")
-		}
-	}
-	data, err := HandleTaskApiResult(result, err, "get tasklist detail "+tasklistID)
+	data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasklists/"+url.PathEscape(tasklistID), params, nil)
 	if err != nil {
 		return nil, err
 	}
 	tasklist, _ := data["tasklist"].(map[string]interface{})
 	if tasklist == nil {
-		return nil, WrapTaskError(ErrCodeTaskInternalError, "tasklist detail response missing tasklist object", "get tasklist detail")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "tasklist detail response missing tasklist object")
 	}
 	return tasklist, nil
 }

@@ -4,16 +4,19 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcs "code.byted.org/lark_search/larksuite-cli/extension/contentsafety"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
 
@@ -66,6 +69,24 @@ func TestApiCmd_DryRun(t *testing.T) {
 	}
 }
 
+// Regression: --params null parses to a nil map; writing page_size onto it must
+// not panic. Symmetric to the typed-flag overlay path in cmd/service — both
+// write into the map ParseJSONMap returns.
+func TestApiCmd_NullParamsWithPageSize(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--params", "null", "--page-size", "50", "--as", "bot", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("--params null with --page-size should not error, got: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, "page_size") {
+		t.Errorf("expected page_size applied over null --params, got:\n%s", out)
+	}
+}
+
 func TestApiCmd_BotMode(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -83,8 +104,19 @@ func TestApiCmd_BotMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "success") {
-		t.Error("expected 'success' in output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if got["ok"] != true || got["identity"] != "bot" {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok || data["result"] != "success" {
+		t.Fatalf("data = %#v, want result=success", got["data"])
 	}
 }
 
@@ -177,6 +209,24 @@ func TestApiValidArgsFunction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewCmdApi_StrictModeHidesAsFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
+	})
+
+	cmd := NewCmdApi(f, nil)
+	flag := cmd.Flags().Lookup("as")
+	if flag == nil {
+		t.Fatal("expected --as flag to be registered")
+	}
+	if !flag.Hidden {
+		t.Fatal("expected --as flag to be hidden in strict mode")
+	}
+	if got := flag.DefValue; got != "bot" {
+		t.Fatalf("default value = %q, want %q", got, "bot")
 	}
 }
 
@@ -292,8 +342,16 @@ func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
 		t.Error("expected 'falling back to json' in stderr")
 	}
 	// Should output JSON result to stdout
-	if !strings.Contains(stdout.String(), "u123") {
-		t.Error("expected user_id in JSON output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if got["ok"] != true || got["identity"] != "bot" || !ok || data["user_id"] != "u123" {
+		t.Fatalf("unexpected fallback envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("fallback success envelope leaked outer code: %s", stdout.String())
 	}
 }
 
@@ -306,7 +364,7 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		URL: "/open-apis/im/v1/chats/oc_xxx/announcement",
 		Body: map[string]interface{}{
-			"code": 230001, "msg": "no permission",
+			"code": 230027, "msg": "user not authorized",
 		},
 	})
 
@@ -318,11 +376,19 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 		t.Fatal("expected an error for non-zero code")
 	}
 	// Should still output the response body so user can see the error details
-	if !strings.Contains(stdout.String(), "230001") {
+	if !strings.Contains(stdout.String(), "230027") {
 		t.Errorf("expected error response in stdout, got: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "no permission") {
+	if !strings.Contains(stdout.String(), "user not authorized") {
 		t.Errorf("expected error message in stdout, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected PermissionError, got %T: %v", err, err)
 	}
 }
 
@@ -359,6 +425,274 @@ func TestApiCmd_PageAll_BatchAPI_StreamsItems(t *testing.T) {
 	}
 }
 
+func TestApiCmd_PageAll_StreamBusinessErrorDoesNotDumpJSON(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pageall-stream-err", AppSecret: "test-secret-pageall-stream-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "safe-page"}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code on later page")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	out := stdout.String()
+	if !strings.Contains(out, "safe-page") {
+		t.Fatalf("expected earlier successful page to remain streamed, got: %s", out)
+	}
+	if strings.Contains(out, "230027") || strings.Contains(out, "user not authorized") {
+		t.Fatalf("streaming stdout should not contain raw error JSON, got: %s", out)
+	}
+	if strings.Contains(out, "\n  \"code\"") {
+		t.Fatalf("streaming stdout should not contain indented JSON error dump, got: %s", out)
+	}
+}
+
+func TestApiCmd_PageAll_BatchAPI_DefaultJSONEnvelope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pageall-json", AppSecret: "test-secret-pageall-json", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if got["ok"] != true || got["identity"] != "bot" || !ok {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	items, ok := data["items"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("data.items = %#v, want one item", data["items"])
+	}
+}
+
+type apiContentSafetyProvider struct {
+	called bool
+	path   string
+	data   interface{}
+	match  string
+}
+
+func (p *apiContentSafetyProvider) Name() string { return "api-test" }
+
+func (p *apiContentSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	p.called = true
+	p.path = req.Path
+	p.data = req.Data
+	if p.match != "" {
+		b, _ := json.Marshal(req.Data)
+		if !strings.Contains(string(b), p.match) {
+			return nil, nil
+		}
+	}
+	return &extcs.Alert{Provider: "api-test", MatchedRules: []string{"pagination"}}, nil
+}
+
+func TestApiCmd_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &apiContentSafetyProvider{}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pageall-safety", AppSecret: "test-secret-pageall-safety", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdApi(f, nil))
+	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !provider.called {
+		t.Fatal("expected content safety provider to scan paginated output")
+	}
+	if provider.path != "api" {
+		t.Fatalf("scan path = %q, want api", provider.path)
+	}
+	data, ok := provider.data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("scanned data type = %T, want map", provider.data)
+	}
+	if _, hasCode := data["code"]; hasCode {
+		t.Fatalf("scanned data should be business data only, got %#v", data)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	alert, ok := got["_content_safety_alert"].(map[string]interface{})
+	if !ok || alert["provider"] != "api-test" {
+		t.Fatalf("missing content safety alert in envelope: %#v", got)
+	}
+}
+
+func TestApiCmd_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &apiContentSafetyProvider{}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pageall-stream-safety", AppSecret: "test-secret-pageall-stream-safety", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdApi(f, nil))
+	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !provider.called {
+		t.Fatal("expected content safety provider to scan streamed paginated output")
+	}
+	if provider.path != "api" {
+		t.Fatalf("scan path = %q, want api", provider.path)
+	}
+	items, ok := provider.data.([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("scanned data = %#v, want one streamed item", provider.data)
+	}
+	if !strings.Contains(stderr.String(), "warning: content safety alert from api-test") {
+		t.Fatalf("expected content safety warning on stderr, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"id":"1"`) {
+		t.Fatalf("expected streamed ndjson output, got: %s", stdout.String())
+	}
+}
+
+func TestApiCmd_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	provider := &apiContentSafetyProvider{match: "blocked"}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-pageall-stream-block", AppSecret: "test-secret-pageall-stream-block", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "safe-page"}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/contact/v3/users",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "blocked-page"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdApi(f, nil))
+	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected content safety block error")
+	}
+	var safetyErr *errs.ContentSafetyError
+	if !errors.As(err, &safetyErr) {
+		t.Fatalf("expected ContentSafetyError, got %T: %v", err, err)
+	}
+	if safetyErr.Category != errs.CategoryPolicy || safetyErr.Subtype != errs.SubtypeContentSafety {
+		t.Fatalf("problem = %s/%s, want %s/%s", safetyErr.Category, safetyErr.Subtype, errs.CategoryPolicy, errs.SubtypeContentSafety)
+	}
+	if len(safetyErr.Rules) != 1 || safetyErr.Rules[0] != "pagination" {
+		t.Fatalf("rules = %v, want [pagination]", safetyErr.Rules)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "safe-page") {
+		t.Fatalf("expected earlier safe page to remain streamed, got: %s", out)
+	}
+	if strings.Contains(out, "blocked-page") {
+		t.Fatalf("blocked page was written before safety block: %s", out)
+	}
+}
+
+func requireProblem(t *testing.T, err error, category errs.Category, subtype errs.Subtype, code int) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Category != category || p.Subtype != subtype || p.Code != code {
+		t.Fatalf("problem = %s/%s/%d, want %s/%s/%d", p.Category, p.Subtype, p.Code, category, subtype, code)
+	}
+}
+
 func TestNormalisePath_StripsQueryAndFragment(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -378,154 +712,6 @@ func TestNormalisePath_StripsQueryAndFragment(t *testing.T) {
 				t.Errorf("normalisePath(%q) = %q, want %q", tt.raw, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestApiCmd_APIError_IsRaw(t *testing.T) {
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-raw", AppSecret: "test-secret-raw", Brand: core.BrandFeishu,
-	})
-
-	// Return a permission error from the API
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/perm",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled for this app",
-			"error": map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "calendar:calendar:readonly"},
-				},
-			},
-		},
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/perm", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for permission denied API response")
-	}
-
-	// Error should be marked Raw
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if !exitErr.Raw {
-		t.Error("expected API error from api command to be marked Raw")
-	}
-
-	// Note: stderr envelope output is tested at the root level (TestHandleRootError_*)
-	// since WriteErrorEnvelope is called by handleRootError, not by cobra's Execute.
-	_ = stderr
-}
-
-func TestApiCmd_APIError_PreservesOriginalMessage(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-origmsg", AppSecret: "test-secret-origmsg", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/origmsg",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled for this app",
-			"error": map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "im:message:readonly"},
-				},
-			},
-		},
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/origmsg", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	// The message should NOT have been enriched (no "App scope not enabled" replacement)
-	if strings.Contains(exitErr.Error(), "App scope not enabled") {
-		t.Error("expected original message, not enriched message")
-	}
-	// Detail should still contain the raw API error detail
-	if exitErr.Detail == nil {
-		t.Fatal("expected non-nil Detail")
-	}
-	if exitErr.Detail.Detail == nil {
-		t.Error("expected raw Detail.Detail to be preserved (not cleared by enrichment)")
-	}
-}
-
-func TestApiCmd_InvalidJSONResponse_ShowsDiagnostic(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-invalidjson", AppSecret: "test-secret-invalidjson", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL:         "/open-apis/test/invalidjson",
-		RawBody:     []byte{},
-		ContentType: "application/json",
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/invalidjson", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
-	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected detail on exit error")
-	}
-	if !strings.Contains(exitErr.Detail.Message, "invalid JSON response") &&
-		!strings.Contains(exitErr.Detail.Message, "empty JSON response body") {
-		t.Fatalf("expected JSON diagnostic, got %q", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "--output") {
-		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
-	}
-}
-
-func TestApiCmd_PageAll_APIError_IsRaw(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-rawpage", AppSecret: "test-secret-rawpage", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/rawpage",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled",
-		},
-	})
-
-	cmd := NewCmdApi(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/rawpage", "--as", "bot", "--page-all"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if !exitErr.Raw {
-		t.Error("expected paginated API error to be marked Raw")
 	}
 }
 
@@ -800,5 +986,71 @@ func TestApiCmd_DryRunWithFile(t *testing.T) {
 	}
 	if !strings.Contains(out, "Dry Run") {
 		t.Errorf("expected dry-run header, got: %s", out)
+	}
+}
+
+// TestApiCmd_PermissionError_DerivesFirstClassFields pins that when a Lark
+// API returns a missing-scope failure, the typed *errs.PermissionError
+// surfaced by `lark-cli api` lifts the diagnostic signals BuildAPIError
+// consumed during classification into first-class wire fields
+// (MissingScopes, LogID, ConsoleURL). The wire shape is the typed envelope
+// — there is no raw-payload passthrough; new Lark diagnostic fields require
+// a CLI release.
+func TestApiCmd_PermissionError_DerivesFirstClassFields(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "cli_test_perm", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/docx/v1/documents/test",
+		Body: map[string]interface{}{
+			"code":   99991679,
+			"msg":    "scope missing",
+			"log_id": "20260527-test-log",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": "docx:document"},
+				},
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/docx/v1/documents/test", "--as", "bot"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+
+	if len(pe.MissingScopes) != 1 || pe.MissingScopes[0] != "docx:document" {
+		t.Errorf("MissingScopes = %v, want [docx:document]", pe.MissingScopes)
+	}
+	if pe.LogID != "20260527-test-log" {
+		t.Errorf("LogID = %q, want %q", pe.LogID, "20260527-test-log")
+	}
+}
+
+func TestApiCmd_JsonFlag_Accepted(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("--json should be accepted without error, got: %v", err)
+	}
+	if gotOpts.Method != "GET" {
+		t.Errorf("expected method GET, got %s", gotOpts.Method)
 	}
 }

@@ -5,13 +5,18 @@ package cmdutil
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 // newCmdWithAsFlag creates a cobra.Command with a --as string flag for testing.
@@ -175,14 +180,15 @@ func TestCheckIdentity_Unsupported_AutoDetected(t *testing.T) {
 	f.IdentityAutoDetected = true
 
 	err := f.CheckIdentity(core.AsUser, []string{"bot"})
-	if err == nil {
-		t.Fatal("expected error")
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if !strings.Contains(err.Error(), "resolved identity") {
-		t.Errorf("expected 'resolved identity' in error, got: %v", err)
+	if !strings.Contains(ve.Message, "resolved identity") {
+		t.Errorf("expected 'resolved identity' in message, got: %v", ve.Message)
 	}
-	if !strings.Contains(err.Error(), "hint: use --as bot") {
-		t.Errorf("expected hint in error, got: %v", err)
+	if !strings.Contains(ve.Hint, "use --as bot") {
+		t.Errorf("expected hint to suggest --as bot, got: %v", ve.Hint)
 	}
 }
 
@@ -231,6 +237,17 @@ func TestNewAPIClientWithConfig_NilIOStreams(t *testing.T) {
 	}
 	if ac == nil {
 		t.Fatal("expected non-nil APIClient")
+	}
+}
+
+func TestResolveSDKOpenBaseURL(t *testing.T) {
+	if got := resolveSDKOpenBaseURL(core.BrandFeishu, func(string) string { return "" }); got != "https://open.feishu.cn" {
+		t.Fatalf("default feishu open base URL = %q", got)
+	}
+	if got := resolveSDKOpenBaseURL(core.BrandFeishu, func(string) string {
+		return " https://open.feishu-pre.cn/ "
+	}); got != "https://open.feishu-pre.cn" {
+		t.Fatalf("overridden open base URL = %q", got)
 	}
 }
 
@@ -346,6 +363,42 @@ func TestResolveAs_StrictModeUser_ForceUser(t *testing.T) {
 	}
 }
 
+func TestResolveAs_StrictModeUser_PreservesExplicitBot(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("bot", true)
+	got := f.ResolveAs(context.Background(), cmd, core.AsBot)
+	if got != core.AsBot {
+		t.Errorf("explicit bot should be preserved for strict-mode validation, got %s", got)
+	}
+	if err := f.CheckStrictMode(context.Background(), got); err == nil {
+		t.Fatal("expected strict-mode error for explicit bot in user mode")
+	}
+}
+
+func TestResolveAs_StrictModeBot_PreservesExplicitUser(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 2}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("user", true)
+	got := f.ResolveAs(context.Background(), cmd, core.AsUser)
+	if got != core.AsUser {
+		t.Errorf("explicit user should be preserved for strict-mode validation, got %s", got)
+	}
+	if err := f.CheckStrictMode(context.Background(), got); err == nil {
+		t.Fatal("expected strict-mode error for explicit user in bot mode")
+	}
+}
+
+func TestResolveAs_StrictModeUser_ExplicitAutoForcesUser(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", SupportedIdentities: 1}
+	f, _, _, _ := TestFactory(t, cfg)
+	cmd := newCmdWithAsFlag("auto", true)
+	got := f.ResolveAs(context.Background(), cmd, core.AsAuto)
+	if got != core.AsUser {
+		t.Errorf("--as auto should use strict-mode user identity, got %s", got)
+	}
+}
+
 func TestResolveAs_StrictModeBot_IgnoresDefaultAsUser(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "a", AppSecret: "s", DefaultAs: "user", SupportedIdentities: 2}
 	f, _, _, _ := TestFactory(t, cfg)
@@ -353,5 +406,78 @@ func TestResolveAs_StrictModeBot_IgnoresDefaultAsUser(t *testing.T) {
 	got := f.ResolveAs(context.Background(), cmd, "auto")
 	if got != core.AsBot {
 		t.Errorf("bot mode should override default-as user, got %s", got)
+	}
+}
+
+// stubExtProvider is a minimal extcred.Provider for testing external-provider guards.
+type stubExtProvider struct {
+	name string
+	acct *extcred.Account
+	err  error
+}
+
+func (s *stubExtProvider) Name() string { return s.name }
+func (s *stubExtProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
+	return s.acct, s.err
+}
+func (s *stubExtProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+func TestRequireBuiltinCredentialProvider_BlocksExternalProvider(t *testing.T) {
+	stub := &stubExtProvider{name: "env", acct: &extcred.Account{AppID: "app"}}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+	}
+	if ve.Message == "" {
+		t.Error("expected non-empty message")
+	}
+	if ve.Hint == "" {
+		t.Error("expected non-empty hint")
+	}
+}
+
+func TestRequireBuiltinCredentialProvider_AllowsBuiltinProvider(t *testing.T) {
+	// No extension providers → built-in path → no error
+	f, _, _, _ := TestFactory(t, nil)
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRequireBuiltinCredentialProvider_NilCredential(t *testing.T) {
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = nil
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if err != nil {
+		t.Fatalf("unexpected error with nil Credential: %v", err)
+	}
+}
+
+func TestRequireBuiltinCredentialProvider_PropagatesProviderError(t *testing.T) {
+	sentinel := errors.New("provider unavailable")
+	stub := &stubExtProvider{name: "env", err: sentinel}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("error = %v, want sentinel", err)
 	}
 }

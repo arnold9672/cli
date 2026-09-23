@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 // TestVerifyUserToken_TransportError verifies handling of underlying transport errors.

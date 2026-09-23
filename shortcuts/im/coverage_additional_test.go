@@ -17,7 +17,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 )
 
 func TestSanitizeURLForDisplay(t *testing.T) {
@@ -101,9 +101,6 @@ func TestResolveMarkdownAsPost(t *testing.T) {
 	got := resolveMarkdownAsPost(context.Background(), nil, "# Title\n## Subtitle\n\nbody")
 	if !strings.Contains(got, `"tag":"md"`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want post payload", got)
-	}
-	if !strings.Contains(got, `"tag":"text"`) {
-		t.Fatalf("resolveMarkdownAsPost() = %q, want segmented blank-line text paragraph", got)
 	}
 	if !strings.Contains(got, `#### Title`) || !strings.Contains(got, `##### Subtitle`) {
 		t.Fatalf("resolveMarkdownAsPost() = %q, want optimized heading levels", got)
@@ -210,14 +207,15 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 		}
 
 		want := larkcore.QueryParams{
-			"container_id_type":     {"chat"},
-			"container_id":          {"oc_123"},
-			"sort_type":             {"ByCreateTimeAsc"},
-			"page_size":             {"50"},
-			"card_msg_content_type": {"raw_card_content"},
-			"start_time":            {"1772294400"},
-			"end_time":              {"1772467199"},
-			"page_token":            {"next"},
+			"container_id_type":         {"chat"},
+			"container_id":              {"oc_123"},
+			"sort_type":                 {"ByCreateTimeAsc"},
+			"page_size":                 {"50"},
+			"only_thread_root_messages": {"true"},
+			"card_msg_content_type":     {"raw_card_content"},
+			"start_time":                {"1772294400"},
+			"end_time":                  {"1772467199"},
+			"page_token":                {"next"},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("buildChatMessageListRequest() = %#v, want %#v", got, want)
@@ -243,6 +241,13 @@ func TestBuildChatMessageListRequest(t *testing.T) {
 			t.Fatalf("buildChatMessageListRequest() error = %v, want end validation", err)
 		}
 	})
+}
+
+func TestChatMessageListOnlyThreadRootMessagesParams(t *testing.T) {
+	got := buildChatMessageListParams("desc", "20", "oc_123")
+	if vals := got["only_thread_root_messages"]; !reflect.DeepEqual(vals, []string{"true"}) {
+		t.Fatalf("only_thread_root_messages = %#v, want true", vals)
+	}
 }
 
 func TestResolveChatIDForMessagesList(t *testing.T) {
@@ -324,7 +329,7 @@ func TestResolveChatIDForMessagesList(t *testing.T) {
 
 func TestBuildMessagesSearchRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"query":                   "hello",
 			"chat-id":                 "oc_1,oc_2",
 			"sender":                  "ou_1,ou_2",
@@ -374,7 +379,7 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("start later than end", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"start": "2026-03-03T00:00:00+08:00",
 			"end":   "2026-03-02T00:00:00+08:00",
 		}, nil)
@@ -385,8 +390,37 @@ func TestBuildMessagesSearchRequest(t *testing.T) {
 	})
 
 	t.Run("invalid sender id", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
 			"sender": "bad_sender",
+		}, nil)
+		_, err := buildMessagesSearchRequest(runtime)
+		if err == nil || !strings.Contains(err.Error(), "invalid user ID format") {
+			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
+		}
+	})
+
+	t.Run("at-chatter-ids accepts user ids", func(t *testing.T) {
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
+			"query":          "standup",
+			"at-chatter-ids": "ou_a, ou_b",
+		}, nil)
+
+		got, err := buildMessagesSearchRequest(runtime)
+		if err != nil {
+			t.Fatalf("buildMessagesSearchRequest() error = %v", err)
+		}
+
+		filter, _ := got.body["filter"].(map[string]interface{})
+		ids, _ := filter["at_chatter_ids"].([]string)
+		want := []string{"ou_a", "ou_b"}
+		if !reflect.DeepEqual(ids, want) {
+			t.Fatalf("at_chatter_ids = %#v, want %#v", ids, want)
+		}
+	})
+
+	t.Run("at-chatter-ids rejects bad id", func(t *testing.T) {
+		runtime := newMessagesSearchTestRuntimeContext(t, map[string]string{
+			"at-chatter-ids": "ou_a,not_a_user",
 		}, nil)
 		_, err := buildMessagesSearchRequest(runtime)
 		if err == nil || !strings.Contains(err.Error(), "invalid user ID format") {

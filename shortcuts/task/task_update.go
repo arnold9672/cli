@@ -12,10 +12,9 @@ import (
 	"net/url"
 	"strings"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var UpdateTask = common.Shortcut{
@@ -51,7 +50,9 @@ var UpdateTask = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body, err := buildTaskUpdateBody(runtime)
 		if err != nil {
-			return WrapTaskError(ErrCodeTaskInvalidParams, err.Error(), "update task")
+			// buildTaskUpdateBody already returns a typed validation error;
+			// propagate it directly instead of re-wrapping as an API error.
+			return err
 		}
 
 		taskIds := strings.Split(runtime.Str("task-id"), ",")
@@ -63,24 +64,8 @@ var UpdateTask = common.Shortcut{
 				continue
 			}
 
-			queryParams := make(larkcore.QueryParams)
-			queryParams.Set("user_id_type", "open_id")
-
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodPatch,
-				ApiPath:     "/open-apis/task/v2/tasks/" + url.PathEscape(taskId),
-				QueryParams: queryParams,
-				Body:        body,
-			})
-
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return fmt.Errorf("failed to parse response for task %s: %v", taskId, parseErr)
-				}
-			}
-
-			data, err := HandleTaskApiResult(result, err, "update task "+taskId)
+			params := map[string]interface{}{"user_id_type": "open_id"}
+			data, err := callTaskAPITyped(runtime, http.MethodPatch, "/open-apis/task/v2/tasks/"+url.PathEscape(taskId), params, body)
 			if err != nil {
 				return err
 			}
@@ -133,7 +118,7 @@ func buildTaskUpdateBody(runtime *common.RuntimeContext) (map[string]interface{}
 
 	if dataStr := runtime.Str("data"); dataStr != "" {
 		if err := json.Unmarshal([]byte(dataStr), &taskObj); err != nil {
-			return nil, fmt.Errorf("--data must be a valid JSON object: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a valid JSON object: %v", err).WithParam("--data")
 		}
 		// If data is provided, assume keys are update fields
 		for k := range taskObj {
@@ -158,7 +143,7 @@ func buildTaskUpdateBody(runtime *common.RuntimeContext) (map[string]interface{}
 	if dueStr := runtime.Str("due"); dueStr != "" {
 		dueObj, err := parseTaskTime(dueStr)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse due time: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "failed to parse due time: %v", err).WithParam("--due")
 		}
 		taskObj["due"] = dueObj
 		if !contains(updateFields, "due") {
@@ -167,7 +152,7 @@ func buildTaskUpdateBody(runtime *common.RuntimeContext) (map[string]interface{}
 	}
 
 	if len(updateFields) == 0 {
-		return nil, fmt.Errorf("no fields to update")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "no fields to update")
 	}
 
 	return map[string]interface{}{

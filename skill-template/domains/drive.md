@@ -1,9 +1,9 @@
 
-> **导入分流规则：** 如果用户要把本地 Excel / CSV 导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
+> **导入分流规则：** 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
 
 ## 快速决策
 
-- 用户要把本地 `.xlsx` / `.csv` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
+- 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
 - 用户要在云空间里新建文件夹，优先使用 `lark-cli drive +create-folder`。
@@ -34,6 +34,16 @@
 
 #### 处理流程
 
+**推荐方式：使用 `drive +inspect` 自动解包**
+
+```bash
+lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
+```
+
+返回结果包含 `type`（底层文档类型）、`token`（真实 file_token）、`title`、`url` 等字段，直接用于后续操作。
+
+**手动方式：使用 `wiki.spaces.get_node` 查询节点信息**
+
 1. **使用 `wiki.spaces.get_node` 查询节点信息**
    ```bash
    lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
@@ -51,7 +61,7 @@
    | `docx` | 新版云文档 | `drive file.comments.*`、`docx.*` |
    | `doc` | 旧版云文档 | `drive file.comments.*` |
    | `sheet` | 电子表格 | `sheets.*` |
-   | `bitable` | 多维表格 | `bitable.*` |
+   | `bitable` | 多维表格 / Base | `drive file.comments.*`、`bitable.*` |
    | `slides` | 幻灯片 | `drive.*` |
    | `file` | 文件 | `drive.*` |
    | `mindnote` | 思维导图 | `drive.*` |
@@ -102,8 +112,8 @@ Drive Folder (云空间文件夹)
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
 | 读取文档内容 | `file_token` / 通过 `docs +fetch` 自动处理 | `docs +fetch` 支持直接传入 URL |
-| 添加局部评论（划词评论） | `file_token` | 传 `--selection-with-ellipsis` 或 `--block-id` 时，`drive +add-comment` 会创建局部评论；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL |
-| 添加全文评论 | `file_token` | 不传 `--selection-with-ellipsis` / `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL |
+| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`；Base / bitable 只有记录局部评论，定位为 file_token(base token) + `--block-id <table-id>!<record-id>!<view-id>` |
+| 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |
 | 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
 | 列出文档评论 | `file_token` | 同添加评论 |
@@ -111,13 +121,40 @@ Drive Folder (云空间文件夹)
 ### 评论能力边界（关键！）
 
 - `drive +add-comment` 支持两种模式。
-- 全文评论：未传 `--selection-with-ellipsis` / `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL，以及最终解析为 `doc`/`docx` 的 wiki URL。
-- 局部评论：传 `--selection-with-ellipsis` 或 `--block-id` 时启用；仅支持 `docx`，以及最终解析为 `docx` 的 wiki URL。
+- 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL。`sheet`、`slides`、Base / bitable 不支持全文评论。
+- 局部评论：传 `--block-id` 时启用；`docx` 支持文本定位或 block id，`sheet` 支持 `<sheetId>!<cell>`，`slides` 支持 `<slide-block-type>!<xml-id>`，Base / bitable 支持 `<table-id>!<record-id>!<view-id>`；wiki URL 解析到这些类型时也支持对应局部评论。Drive file 本次只支持全文评论，不支持局部评论。
+- Drive file 评论仅支持白名单扩展名：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件暂不支持，CLI 会直接报错提示当前还不支持这种类型的评论。
+- Review / 审阅 / 校对 / 逐条指出问题场景优先使用局部评论，不要把多个可定位问题汇总成一条全文评论；具体参数和定位方式见生成后的 `skills/lark-drive/references/lark-drive-add-comment.md`。
 - `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
-- 如果 wiki 解析后不是 `doc`/`docx`，不要用 `+add-comment`。
-- 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
+- `slides` 评论要求显式传 `--block-id <slide-block-type>!<xml-id>`；CLI 会将其拆分后写入 `anchor.block_id` 和 `anchor.slide_block_type`。其中 `<xml-id>` 是 PPT XML 协议中的元素 `id`；不支持 `--selection-with-ellipsis` 和 `--full-comment`。
+- Base 记录局部评论使用 `--type bitable` / `--type base` 或 `/base/`、`/bitable/`、wiki Base 链接；`bitable` 和 Base 是同一概念，`bitable` 是内部代号、Base 是产品名，裸 token 推荐传 `bitable`，`base` 仅作为兼容别名兜底。Base 不支持全局评论，所有评论都挂在记录上；定位信息必须是 file token（base token）+ `--block-id <table-id>!<record-id>!<view-id>`，其中 table/record/view ID 通常分别以 `tbl`/`rec`/`vew` 开头。view_id 只决定被提及时点击通知打开哪个视图，不影响评论挂载点，但必须传；ID 可通过 [`lark-base`](../../skills/lark-base/SKILL.md) 获取。
+- 如果 wiki 解析后不是 `doc`/`docx`/`file`/`sheet`/`slides`/`bitable`/`base`，不要用 `+add-comment`。
+- 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`；docx/sheet/slides 局部评论传 `anchor.block_id`，Base 记录局部评论传 `anchor.block_id`（table_id）、`anchor.base_record_id`、`anchor.base_view_id`。
 
 ### 评论查询与统计口径（关键！）
+
+**强制规则**：`drive file.comments list` 默认必须传 `is_solved:false`，即仅查询未解决评论。即使用户说“所有评论”“全部评论”“把评论都列出来”，只要没有明确提到要包含已解决评论，仍然按默认口径查询未解决评论。
+仅当用户明确要求包含已解决评论时，才可省略 `is_solved` 参数。
+
+**正确示例：**
+
+```bash
+# 默认查询：仅未解决评论（推荐）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
+
+# 查询所有评论（用户未明确要求包含已解决评论）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
+
+# 包含已解决评论（需用户明确要求）
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
+```
+
+**错误示例：**
+
+```bash
+# 不推荐：用户未明确要求但查询所有评论
+lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
+```
 
 - 查询文档评论时，使用 `drive file.comments list`。
 - `drive file.comments list` 返回的 `items` 应理解为"评论卡片"列表，每个 `item` 对应用户界面里看到的一张评论卡片，而不是平铺的互动消息列表。
@@ -156,7 +193,7 @@ Drive Folder (云空间文件夹)
 |----------|------|----------|
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
-| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet） |
+| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides/bitable） |
 
 ### 授权当前应用访问文档
 

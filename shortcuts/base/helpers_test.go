@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/vfs/localfileio"
 )
 
 var testPC = &parseCtx{fio: &localfileio.LocalFileIO{}}
@@ -38,7 +38,7 @@ func TestParseHelpers(t *testing.T) {
 	if err != nil || obj["name"] != "demo" {
 		t.Fatalf("obj=%v err=%v", obj, err)
 	}
-	if _, err := parseJSONObject(testPC, `[1]`, "json"); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") || !strings.Contains(err.Error(), "lark-base skill") || strings.Contains(err.Error(), "array") {
+	if _, err := parseJSONObject(testPC, `[1]`, "json"); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") || !strings.Contains(err.Error(), "match the documented shape") || strings.Contains(err.Error(), "array") {
 		t.Fatalf("err=%v", err)
 	}
 	if _, err := parseJSONObject(testPC, `null`, "json"); err == nil || !strings.Contains(err.Error(), "--json must be a JSON object") {
@@ -66,7 +66,7 @@ func TestParseHelpers(t *testing.T) {
 	if _, err := parseStringListFlexible(testPC, `[1]`, "fields"); err == nil || !strings.Contains(err.Error(), "invalid JSON string array") {
 		t.Fatalf("err=%v", err)
 	}
-	if _, err := parseJSONValue(testPC, "{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a valid JSON directly") || !strings.Contains(err.Error(), "@file.json") || !strings.Contains(err.Error(), "lark-base skill") {
+	if _, err := parseJSONValue(testPC, "{", "json"); err == nil || !strings.Contains(err.Error(), "tip: pass a valid JSON directly") || !strings.Contains(err.Error(), "@file.json") || !strings.Contains(err.Error(), "complex JSON/DSL") {
 		t.Fatalf("err=%v", err)
 	}
 	if !reflect.DeepEqual(parseStringList("m,n"), []string{"m", "n"}) {
@@ -189,16 +189,66 @@ func TestBaseV3Helpers(t *testing.T) {
 }
 
 func TestRecordAndChunkHelpers(t *testing.T) {
-	records, err := normalizeRecordInputs(`[{"record_id":"rec_1","fields":{"Name":"Alice"}},{"Name":"Bob"}]`)
-	if err != nil || len(records) != 2 {
-		t.Fatalf("records=%v err=%v", records, err)
-	}
-	if _, err := normalizeRecordInputs(`[1]`); err == nil || !strings.Contains(err.Error(), "must be an object") {
-		t.Fatalf("err=%v", err)
-	}
+	records := []map[string]interface{}{{"record_id": "rec_1"}, {"record_id": "rec_2"}}
 	if len(chunkRecords(records, 1)) != 2 || len(chunkStringIDs([]string{"a", "b", "c"}, 2)) != 2 {
 		t.Fatalf("chunk helpers mismatch")
 	}
+}
+
+func TestRecordSelectionHelpers(t *testing.T) {
+	recordIDs, err := normalizeRecordIDs([]string{" rec_1 ", "rec_2"})
+	if err != nil || !reflect.DeepEqual(recordIDs, []string{"rec_1", "rec_2"}) {
+		t.Fatalf("recordIDs=%v err=%v", recordIDs, err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{}); err == nil || !strings.Contains(err.Error(), "provide at least one --record-id") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{"rec_1", "rec_1"}); err == nil || !strings.Contains(err.Error(), "duplicate record id") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{" "}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordIDs([]interface{}{1}); err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("err=%v", err)
+	}
+	tooManyRecords := make([]string, maxRecordSelectionCount+1)
+	if _, err := normalizeRecordIDs(tooManyRecords); err == nil || !strings.Contains(err.Error(), "exceeds maximum limit") {
+		t.Fatalf("err=%v", err)
+	}
+
+	fields, err := normalizeRecordGetSelectFields([]interface{}{" Name ", "fld_status"})
+	if err != nil || !reflect.DeepEqual(fields, []string{"Name", "fld_status"}) {
+		t.Fatalf("fields=%v err=%v", fields, err)
+	}
+	if fields, err := normalizeRecordGetSelectFields(nil); err != nil || fields != nil {
+		t.Fatalf("fields=%v err=%v", fields, err)
+	}
+	if _, err := normalizeRecordGetSelectFields([]interface{}{"Name", "Name"}); err == nil || !strings.Contains(err.Error(), "duplicate field id") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordGetSelectFields([]interface{}{""}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := normalizeRecordGetSelectFields([]interface{}{1}); err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("err=%v", err)
+	}
+	tooManyFields := make([]string, maxBatchGetSelectFieldCount+1)
+	if _, err := normalizeRecordGetSelectFields(tooManyFields); err == nil || !strings.Contains(err.Error(), "exceeds maximum limit") {
+		t.Fatalf("err=%v", err)
+	}
+
+	fields, err = resolveRecordGetSelectFields(nil, map[string]interface{}{"select_fields": []interface{}{"Name"}})
+	if err != nil || !reflect.DeepEqual(fields, []string{"Name"}) {
+		t.Fatalf("fields=%v err=%v", fields, err)
+	}
+	if _, err := resolveRecordGetSelectFields([]string{"Name"}, map[string]interface{}{"select_fields": []interface{}{"Age"}}); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := resolveRecordGetSelectFields(nil, map[string]interface{}{"select_fields": []interface{}{}}); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("err=%v", err)
+	}
+
 }
 
 func TestResolveHelpers(t *testing.T) {
@@ -284,11 +334,11 @@ func TestJSONInputHelpers(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	syntaxErr := formatJSONError("json", "object", &json.SyntaxError{Offset: 7})
-	if !strings.Contains(syntaxErr.Error(), "near byte 7") || !strings.Contains(syntaxErr.Error(), "tip: pass a valid JSON directly") || !strings.Contains(syntaxErr.Error(), "@file.json") || !strings.Contains(syntaxErr.Error(), "lark-base skill") {
+	if !strings.Contains(syntaxErr.Error(), "near byte 7") || !strings.Contains(syntaxErr.Error(), "tip: pass a valid JSON directly") || !strings.Contains(syntaxErr.Error(), "@file.json") || !strings.Contains(syntaxErr.Error(), "complex JSON/DSL") {
 		t.Fatalf("syntaxErr=%v", syntaxErr)
 	}
 	typeErr := formatJSONError("json", "object", &json.UnmarshalTypeError{Field: "filter_info"})
-	if !strings.Contains(typeErr.Error(), `field "filter_info"`) || !strings.Contains(typeErr.Error(), "tip: pass a valid JSON directly") || !strings.Contains(typeErr.Error(), "@file.json") || !strings.Contains(typeErr.Error(), "lark-base skill") {
+	if !strings.Contains(typeErr.Error(), `field "filter_info"`) || !strings.Contains(typeErr.Error(), "tip: pass a valid JSON directly") || !strings.Contains(typeErr.Error(), "@file.json") || !strings.Contains(typeErr.Error(), "complex JSON/DSL") {
 		t.Fatalf("typeErr=%v", typeErr)
 	}
 }

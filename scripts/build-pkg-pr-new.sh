@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR/bin" "$OUT_DIR/scripts"
 VERSION="$(node -p "require('./package.json').version")"
 DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 SHA="$(git rev-parse --short HEAD)"
-LDFLAGS="-s -w -X github.com/larksuite/cli/internal/build.Version=${VERSION}-${SHA} -X github.com/larksuite/cli/internal/build.Date=${DATE}"
+LDFLAGS="-s -w -X code.byted.org/lark_search/larksuite-cli/internal/build.Version=${VERSION}-${SHA} -X code.byted.org/lark_search/larksuite-cli/internal/build.Date=${DATE}"
 
 build_target() {
   local goos="$1"
@@ -33,6 +33,7 @@ build_target darwin arm64
 build_target linux amd64
 build_target darwin amd64
 build_target linux arm64
+build_target linux riscv64
 build_target windows amd64
 build_target windows arm64
 
@@ -55,6 +56,7 @@ const platformMap = {
 const archMap = {
   x64: "amd64",
   arm64: "arm64",
+  riscv64: "riscv64",
 };
 
 const platform = platformMap[process.platform];

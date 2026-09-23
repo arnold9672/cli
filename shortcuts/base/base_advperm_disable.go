@@ -11,8 +11,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseAdvpermDisable = common.Shortcut{
@@ -25,9 +25,13 @@ var BaseAdvpermDisable = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
+	Tips: []string{
+		baseHighRiskYesTip,
+		"Disabling advanced permissions invalidates existing custom roles; confirm the target Base before passing --yes.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
 	},
@@ -51,6 +55,6 @@ var BaseAdvpermDisable = common.Shortcut{
 			return err
 		}
 
-		return handleRoleResponse(runtime, apiResp.RawBody, "disable advanced permissions failed")
+		return handleRoleAPIResponse(runtime, apiResp, "disable advanced permissions failed")
 	},
 }

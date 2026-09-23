@@ -1,0 +1,7 @@
+interface:
+  display_name: "memory-get"
+  short_description: "Read one Memory Hub entry by its reliable memory key"
+  default_prompt: "Use $memory-get to read one Memory Hub entry by memory_key."
+
+policy:
+  allow_implicit_invocation: true

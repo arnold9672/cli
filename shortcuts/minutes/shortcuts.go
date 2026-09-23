@@ -3,12 +3,19 @@
 
 package minutes
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // Shortcuts returns all minutes shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		MinutesSearch,
 		MinutesDownload,
+		MinutesUpload,
+		MinutesUpdate,
+		MinutesSummary,
+		MinutesTodo,
+		MinutesSpeakerReplace,
+		MinutesWordReplace,
+		MinutesDetail,
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	clie2e "code.byted.org/lark_search/larksuite-cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -27,9 +27,10 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 
 	var taskGUID string
 
-	t.Run("create", func(t *testing.T) {
+	t.Run("create as bot", func(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+create"},
+			Args:      []string{"task", "+create"},
+			DefaultAs: "bot",
 			Data: map[string]any{
 				"summary":     createdSummary,
 				"description": createdDescription,
@@ -42,25 +43,25 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 		require.NotEmpty(t, taskGUID, "stdout:\n%s", result.Stdout)
 
 		parentT.Cleanup(func() {
-			deleteResult, deleteErr := clie2e.RunCmd(context.Background(), clie2e.Request{
-				Args:   []string{"task", "tasks", "delete"},
-				Params: map[string]any{"task_guid": taskGUID},
+			cleanupCtx, cancel := clie2e.CleanupContext()
+			defer cancel()
+
+			deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+				Args:      []string{"task", "tasks", "delete"},
+				DefaultAs: "bot",
+				Params:    map[string]any{"task_guid": taskGUID},
+				Yes:       true,
 			})
-			if deleteErr != nil {
-				parentT.Errorf("delete task %s: %v", taskGUID, deleteErr)
-				return
-			}
-			if deleteResult.ExitCode != 0 {
-				parentT.Errorf("delete task %s failed: exit=%d stderr=%s", taskGUID, deleteResult.ExitCode, deleteResult.Stderr)
-			}
+			clie2e.ReportCleanupFailure(parentT, "delete task "+taskGUID, deleteResult, deleteErr)
 		})
 	})
 
-	t.Run("update", func(t *testing.T) {
+	t.Run("update as bot", func(t *testing.T) {
 		require.NotEmpty(t, taskGUID, "task GUID should be created before update")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args: []string{"task", "+update", "--task-id", taskGUID},
+			Args:      []string{"task", "+update", "--task-id", taskGUID},
+			DefaultAs: "bot",
 			Data: map[string]any{
 				"summary":     updatedSummary,
 				"description": updatedDescription,
@@ -71,16 +72,17 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("get", func(t *testing.T) {
+	t.Run("get as bot", func(t *testing.T) {
 		require.NotEmpty(t, taskGUID, "task GUID should be created before get")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:   []string{"task", "tasks", "get"},
-			Params: map[string]any{"task_guid": taskGUID},
+			Args:      []string{"task", "tasks", "get"},
+			DefaultAs: "bot",
+			Params:    map[string]any{"task_guid": taskGUID},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String())
 		assert.Equal(t, updatedSummary, gjson.Get(result.Stdout, "data.task.summary").String())
 		assert.Equal(t, updatedDescription, gjson.Get(result.Stdout, "data.task.description").String())

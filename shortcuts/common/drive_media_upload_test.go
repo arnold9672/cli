@@ -7,27 +7,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"os"
-	"strings"
 	"sync/atomic"
 	"testing"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
 )
 
 var commonDriveMediaUploadTestSeq atomic.Int64
 
-func TestUploadDriveMediaAllBuildsMultipartBody(t *testing.T) {
+func TestUploadDriveMediaAllTypedBuildsMultipartBody(t *testing.T) {
 	tests := []struct {
 		name           string
 		parentNode     *string
@@ -63,7 +59,7 @@ func TestUploadDriveMediaAllBuildsMultipartBody(t *testing.T) {
 			reg.Register(uploadStub)
 
 			filePath := writeDriveMediaUploadTestFile(t, "small.bin", 3)
-			fileToken, err := UploadDriveMediaAll(runtime, DriveMediaUploadAllConfig{
+			fileToken, err := UploadDriveMediaAllTyped(runtime, DriveMediaUploadAllConfig{
 				FilePath:   filePath,
 				FileName:   "small.bin",
 				FileSize:   3,
@@ -72,7 +68,7 @@ func TestUploadDriveMediaAllBuildsMultipartBody(t *testing.T) {
 				Extra:      `{"drive_route_token":"doxcn123"}`,
 			})
 			if err != nil {
-				t.Fatalf("UploadDriveMediaAll() error: %v", err)
+				t.Fatalf("UploadDriveMediaAllTyped() error: %v", err)
 			}
 			if fileToken != "file_all_123" {
 				t.Fatalf("fileToken = %q, want %q", fileToken, "file_all_123")
@@ -106,7 +102,7 @@ func TestUploadDriveMediaAllBuildsMultipartBody(t *testing.T) {
 	}
 }
 
-func TestUploadDriveMediaMultipartBuildsPreparePartsAndFinish(t *testing.T) {
+func TestUploadDriveMediaMultipartTypedBuildsRequestBodies(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
 
@@ -149,7 +145,7 @@ func TestUploadDriveMediaMultipartBuildsPreparePartsAndFinish(t *testing.T) {
 	reg.Register(finishStub)
 
 	filePath := writeDriveMediaUploadSizedFile(t, "large.bin", MaxDriveMediaUploadSinglePartSize+1)
-	fileToken, err := UploadDriveMediaMultipart(runtime, DriveMediaMultipartUploadConfig{
+	fileToken, err := UploadDriveMediaMultipartTyped(runtime, DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   "large.bin",
 		FileSize:   MaxDriveMediaUploadSinglePartSize + 1,
@@ -158,7 +154,7 @@ func TestUploadDriveMediaMultipartBuildsPreparePartsAndFinish(t *testing.T) {
 		Extra:      `{"obj_type":"sheet","file_extension":"xlsx"}`,
 	})
 	if err != nil {
-		t.Fatalf("UploadDriveMediaMultipart() error: %v", err)
+		t.Fatalf("UploadDriveMediaMultipartTyped() error: %v", err)
 	}
 	if fileToken != "file_multi_123" {
 		t.Fatalf("fileToken = %q, want %q", fileToken, "file_multi_123")
@@ -213,78 +209,20 @@ func TestUploadDriveMediaMultipartBuildsPreparePartsAndFinish(t *testing.T) {
 	}
 }
 
-func TestParseDriveMediaMultipartUploadSessionValidatesResponseFields(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		data     map[string]interface{}
-		wantText string
-	}{
-		{
-			name: "missing upload id",
-			data: map[string]interface{}{
-				"block_size": 4 * 1024 * 1024,
-				"block_num":  6,
-			},
-			wantText: "upload prepare failed: no upload_id returned",
-		},
-		{
-			name: "missing block size",
-			data: map[string]interface{}{
-				"upload_id": "upload_123",
-				"block_num": 6,
-			},
-			wantText: "upload prepare failed: invalid block_size returned",
-		},
-		{
-			name: "missing block num",
-			data: map[string]interface{}{
-				"upload_id":  "upload_123",
-				"block_size": 4 * 1024 * 1024,
-			},
-			wantText: "upload prepare failed: invalid block_num returned",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := ParseDriveMediaMultipartUploadSession(tt.data)
-			if err == nil || !strings.Contains(err.Error(), tt.wantText) {
-				t.Fatalf("err = %v, want substring %q", err, tt.wantText)
-			}
-		})
-	}
-}
-
-func TestUploadDriveMediaMultipartPartAPIFailure(t *testing.T) {
+func TestUploadDriveMediaMultipartTypedPrepareAPIFailure(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_prepare",
 		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"upload_id":  "upload_123",
-				"block_size": float64(4 * 1024 * 1024),
-				"block_num":  float64(6),
-			},
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/medias/upload_part",
-		Body: map[string]interface{}{
 			"code": 999,
-			"msg":  "chunk rejected",
+			"msg":  "prepare rejected",
 		},
 	})
 
 	filePath := writeDriveMediaUploadSizedFile(t, "large.bin", MaxDriveMediaUploadSinglePartSize+1)
-	_, err := UploadDriveMediaMultipart(runtime, DriveMediaMultipartUploadConfig{
+	_, err := UploadDriveMediaMultipartTyped(runtime, DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   "large.bin",
 		FileSize:   MaxDriveMediaUploadSinglePartSize + 1,
@@ -294,12 +232,16 @@ func TestUploadDriveMediaMultipartPartAPIFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "upload media part failed: [999] chunk rejected") {
-		t.Fatalf("unexpected error: %v", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Category != errs.CategoryAPI || p.Code != 999 {
+		t.Fatalf("category/code = %s/%d, want api/999", p.Category, p.Code)
 	}
 }
 
-func TestUploadDriveMediaMultipartFinishRequiresFileToken(t *testing.T) {
+func TestUploadDriveMediaMultipartTypedFinishAPIFailure(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
 	reg.Register(&httpmock.Stub{
@@ -328,13 +270,13 @@ func TestUploadDriveMediaMultipartFinishRequiresFileToken(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_finish",
 		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{},
+			"code": 999,
+			"msg":  "finish rejected",
 		},
 	})
 
 	filePath := writeDriveMediaUploadSizedFile(t, "large.bin", MaxDriveMediaUploadSinglePartSize+1)
-	_, err := UploadDriveMediaMultipart(runtime, DriveMediaMultipartUploadConfig{
+	_, err := UploadDriveMediaMultipartTyped(runtime, DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   "large.bin",
 		FileSize:   MaxDriveMediaUploadSinglePartSize + 1,
@@ -344,70 +286,13 @@ func TestUploadDriveMediaMultipartFinishRequiresFileToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "upload media finish failed: no file_token returned") {
-		t.Fatalf("unexpected error: %v", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
 	}
-}
-
-func TestParseDriveMediaUploadResponseErrors(t *testing.T) {
-	t.Parallel()
-
-	t.Run("invalid json", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := ParseDriveMediaUploadResponse(&larkcore.ApiResp{RawBody: []byte("{")}, "upload media failed")
-		if err == nil || !strings.Contains(err.Error(), "invalid response JSON") {
-			t.Fatalf("expected invalid JSON error, got %v", err)
-		}
-	})
-
-	t.Run("api code error", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := ParseDriveMediaUploadResponse(&larkcore.ApiResp{RawBody: []byte(`{"code":999,"msg":"boom","error":{"detail":"x"}}`)}, "upload media failed")
-		if err == nil || !strings.Contains(err.Error(), "upload media failed: [999] boom") {
-			t.Fatalf("expected API error, got %v", err)
-		}
-	})
-}
-
-func TestExtractDriveMediaUploadFileTokenRequiresToken(t *testing.T) {
-	t.Parallel()
-
-	_, err := ExtractDriveMediaUploadFileToken(map[string]interface{}{}, "upload media failed")
-	if err == nil || !strings.Contains(err.Error(), "upload media failed: no file_token returned") {
-		t.Fatalf("err = %v, want missing file_token error", err)
+	if p.Category != errs.CategoryAPI || p.Code != 999 {
+		t.Fatalf("category/code = %s/%d, want api/999", p.Category, p.Code)
 	}
-}
-
-func TestWrapDriveMediaUploadRequestError(t *testing.T) {
-	t.Parallel()
-
-	t.Run("preserves exit error", func(t *testing.T) {
-		t.Parallel()
-
-		original := output.ErrValidation("bad input")
-		got := WrapDriveMediaUploadRequestError(original, "upload media failed")
-		if got != original {
-			t.Fatalf("expected same exit error pointer, got %v", got)
-		}
-	})
-
-	t.Run("wraps generic error as network", func(t *testing.T) {
-		t.Parallel()
-
-		got := WrapDriveMediaUploadRequestError(io.EOF, "upload media failed")
-		var exitErr *output.ExitError
-		if !errors.As(got, &exitErr) {
-			t.Fatalf("expected ExitError, got %T", got)
-		}
-		if exitErr.Code != output.ExitNetwork {
-			t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitNetwork)
-		}
-		if !strings.Contains(got.Error(), "upload media failed") {
-			t.Fatalf("unexpected error: %v", got)
-		}
-	})
 }
 
 type capturedDriveMediaMultipartBody struct {

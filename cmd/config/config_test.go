@@ -6,15 +6,20 @@ package config
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/i18n"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
 )
 
 type noopConfigKeychain struct{}
@@ -35,6 +40,7 @@ func (r *recordingConfigKeychain) Remove(service, account string) error {
 }
 
 func TestConfigInitCmd_FlagParsing(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	f.IOStreams.In = strings.NewReader("secret123\n")
 
@@ -87,15 +93,16 @@ func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	// Config errors share ExitAuth (3), not ExitValidation.
+	if got := output.ExitCodeOf(err); got != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d (config category → ExitAuth)", got, output.ExitAuth)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "not configured" {
-		t.Fatalf("detail = %#v, want config/not configured", exitErr.Detail)
+	if cfgErr.Subtype != errs.SubtypeNotConfigured || cfgErr.Message != "not configured" {
+		t.Fatalf("detail = %+v, want not_configured/not configured", cfgErr)
 	}
 }
 
@@ -120,19 +127,16 @@ func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "no active profile" {
-		t.Fatalf("detail = %#v, want config/no active profile", exitErr.Detail)
+	if !strings.Contains(err.Error(), "no active profile") {
+		t.Fatalf("error = %v, want to contain 'no active profile'", err)
 	}
 }
 
 func TestConfigInitCmd_LangFlag(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
 	var gotOpts *ConfigInitOptions
@@ -145,8 +149,9 @@ func TestConfigInitCmd_LangFlag(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotOpts.Lang != "en" {
-		t.Errorf("expected Lang en, got %s", gotOpts.Lang)
+	// --lang en is canonicalized to en_us in RunE before runF captures opts.
+	if gotOpts.Lang != string(i18n.LangEnUS) {
+		t.Errorf("expected Lang en_us, got %s", gotOpts.Lang)
 	}
 	if !gotOpts.langExplicit {
 		t.Error("expected langExplicit=true when --lang is passed")
@@ -154,6 +159,7 @@ func TestConfigInitCmd_LangFlag(t *testing.T) {
 }
 
 func TestConfigInitCmd_LangDefault(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
 	var gotOpts *ConfigInitOptions
@@ -166,11 +172,85 @@ func TestConfigInitCmd_LangDefault(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotOpts.Lang != "zh" {
-		t.Errorf("expected default Lang zh, got %s", gotOpts.Lang)
+	if gotOpts.Lang != "" {
+		t.Errorf("expected default Lang to be unset (\"\"), got %q", gotOpts.Lang)
 	}
 	if gotOpts.langExplicit {
 		t.Error("expected langExplicit=false when --lang is not passed")
+	}
+}
+
+// TestSaveInitConfig_OmitLangPreservesPrior guards the single-app replace path:
+// re-running init without --lang must inherit the prior preference, not clear it.
+func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{
+		{AppId: "cli_x", AppSecret: core.PlainSecret("s"), Brand: core.BrandFeishu, Lang: i18n.LangJaJP},
+	}}
+	if err := core.SaveMultiAppConfig(existing); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, ""); err != nil {
+		t.Fatalf("saveInitConfig (no --lang): %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := got.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangJaJP {
+		t.Errorf("Lang after re-init = %v, want %q (preserved)", app, i18n.LangJaJP)
+	}
+}
+
+// TestConfigInitCmd_InvalidLang verifies a non-empty --lang on config init is
+// strictly validated the same way bind validates: wrong-case / typo / removed
+// codes / hyphen form all exit with ExitValidation. (Empty is a no-op.)
+func TestConfigInitCmd_InvalidLang(t *testing.T) {
+	clearAgentEnv(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	cases := []struct {
+		name string
+		lang string
+	}{
+		{"wrong case ZH", "ZH"},
+		{"typo frr", "frr"},
+		{"removed code ar", "ar"},
+		{"unknown xx", "xx"},
+		{"hyphen form zh-CN", "zh-CN"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			cmd := NewCmdConfigInit(f, nil)
+			f.IOStreams.In = strings.NewReader("sec\n")
+			cmd.SetArgs([]string{"--lang", tc.lang, "--app-id", "x", "--app-secret-stdin"})
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("expected validation error for --lang %q, got nil", tc.lang)
+			}
+			var valErr *errs.ValidationError
+			if !errors.As(err, &valErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+			}
+			if valErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype = %q, want %q", valErr.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if valErr.Param != "--lang" {
+				t.Errorf("param = %q, want %q", valErr.Param, "--lang")
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d (validation)", got, output.ExitValidation)
+			}
+			if !strings.Contains(err.Error(), "invalid --lang") {
+				t.Errorf("error message %q does not contain 'invalid --lang'", err.Error())
+			}
+		})
 	}
 }
 
@@ -312,8 +392,38 @@ func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
-	if !strings.Contains(err.Error(), "conflicts with existing appId") {
-		t.Fatalf("error = %v, want conflict with existing appId", err)
+	// A name/appId conflict is user input — a typed validation error naming the
+	// offending flag, not a system storage failure.
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError; err=%v", err, err)
+	}
+	if verr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want invalid_argument", verr.Subtype)
+	}
+	if verr.Param != "--name" {
+		t.Errorf("param = %q, want --name", verr.Param)
+	}
+	if output.ExitCodeOf(err) != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (validation)", output.ExitCodeOf(err), output.ExitValidation)
+	}
+	if !strings.Contains(verr.Message, "conflicts with existing appId") {
+		t.Errorf("message = %q, want conflict description", verr.Message)
+	}
+}
+
+// TestWrapSaveConfigError_PassesTypedValidationThrough pins that a user-input
+// validation error (e.g. the --name conflict) is not reclassified as an
+// internal storage failure on its way up through the save call sites.
+func TestWrapSaveConfigError_PassesTypedValidationThrough(t *testing.T) {
+	conflict := errs.NewValidationError(errs.SubtypeInvalidArgument, "name conflict").WithParam("--name")
+	var verr *errs.ValidationError
+	if !errors.As(wrapSaveConfigError(conflict), &verr) {
+		t.Fatalf("typed validation must pass through unchanged, got %T", wrapSaveConfigError(conflict))
+	}
+	var ierr *errs.InternalError
+	if !errors.As(wrapSaveConfigError(errors.New("disk full")), &ierr) || ierr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("untyped failure must become internal/storage")
 	}
 }
 
@@ -339,4 +449,118 @@ func TestUpdateExistingProfileWithoutSecret_RejectsAppIDChange(t *testing.T) {
 	if !strings.Contains(err.Error(), "App Secret") {
 		t.Fatalf("error = %v, want mention of App Secret", err)
 	}
+}
+
+// stubConfigExtProvider simulates env/sidecar credential mode for config guard tests.
+type stubConfigExtProvider struct{ name string }
+
+func (s *stubConfigExtProvider) Name() string { return s.name }
+func (s *stubConfigExtProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
+	return &extcred.Account{AppID: "test-app"}, nil
+}
+func (s *stubConfigExtProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+func newConfigFactoryWithExternalProvider(t *testing.T) *cmdutil.Factory {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	stub := &stubConfigExtProvider{name: "env"}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.Credential = cred
+	return f
+}
+
+func TestConfigBlockedByExternalProvider(t *testing.T) {
+	f := newConfigFactoryWithExternalProvider(t)
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"init", []string{"init", "--app-id", "x", "--app-secret-stdin"}},
+		{"remove", []string{"remove"}},
+		{"show", []string{"show"}},
+		{"default-as", []string{"default-as", "user"}},
+		{"strict-mode", []string{"strict-mode", "off"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := NewCmdConfig(f)
+			cmd.SilenceErrors = true
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(tt.args)
+
+			// Locate the subcommand before execution (PersistentPreRunE receives it as cmd).
+			matched, _, _ := cmd.Find(tt.args)
+
+			err := cmd.Execute()
+
+			// PersistentPreRunE sets SilenceUsage on the matched subcommand, not the parent.
+			if matched != nil && matched != cmd && !matched.SilenceUsage {
+				t.Error("expected PersistentPreRunE to set SilenceUsage on matched subcommand")
+			}
+			if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
+			}
+		})
+	}
+}
+
+// TestValidateInitLang covers the --lang contract: empty (omitted or explicit)
+// is a no-op leaving Lang unset; a short code or Feishu locale canonicalizes to
+// the same locale; an unrecognized value errors.
+func TestValidateInitLang(t *testing.T) {
+	t.Run("empty is a no-op", func(t *testing.T) {
+		for _, explicit := range []bool{false, true} {
+			opts := &ConfigInitOptions{Lang: "", langExplicit: explicit}
+			if err := validateInitLang(opts); err != nil {
+				t.Fatalf("explicit=%v: expected nil error, got %v", explicit, err)
+			}
+			if opts.Lang != "" {
+				t.Errorf("explicit=%v: Lang = %q, want \"\" (unset)", explicit, opts.Lang)
+			}
+		}
+	})
+	t.Run("short and locale canonicalize alike", func(t *testing.T) {
+		for _, in := range []string{"ja", "ja_jp"} {
+			opts := &ConfigInitOptions{Lang: in, langExplicit: true}
+			if err := validateInitLang(opts); err != nil {
+				t.Fatalf("--lang %q: unexpected error %v", in, err)
+			}
+			if opts.Lang != string(i18n.LangJaJP) {
+				t.Errorf("--lang %q normalized to %q, want %q", in, opts.Lang, i18n.LangJaJP)
+			}
+		}
+	})
+}
+
+// TestPrintLangPreferenceConfirmation covers the confirmation helper: it prints
+// to stderr only when --lang explicitly set a non-empty preference.
+func TestPrintLangPreferenceConfirmation(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Run("explicit non-empty prints confirmation", func(t *testing.T) {
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en_us", UILang: i18n.LangZhCN, langExplicit: true})
+		got := stderr.String()
+		if !strings.Contains(got, "语言偏好") || !strings.Contains(got, "en_us") {
+			t.Errorf("stderr = %q, want confirmation mentioning the preference and en_us", got)
+		}
+	})
+	t.Run("implicit prints nothing", func(t *testing.T) {
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en_us", UILang: i18n.LangZhCN, langExplicit: false})
+		if got := stderr.String(); got != "" {
+			t.Errorf("stderr = %q, want empty when --lang is implicit", got)
+		}
+	})
+	t.Run("explicit empty prints nothing", func(t *testing.T) {
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "", UILang: i18n.LangZhCN, langExplicit: true})
+		if got := stderr.String(); got != "" {
+			t.Errorf("stderr = %q, want empty when --lang is empty", got)
+		}
+	})
 }

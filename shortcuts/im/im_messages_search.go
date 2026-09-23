@@ -9,11 +9,11 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
-	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	convertlib "code.byted.org/lark_search/larksuite-cli/shortcuts/im/convert_lib"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -23,7 +23,6 @@ const (
 	messagesSearchDefaultPageLimit = 20
 	messagesSearchMaxPageLimit     = 40
 	messagesSearchMGetBatchSize    = 50
-	messagesSearchChatBatchSize    = 50
 )
 
 var ImMessagesSearch = common.Shortcut{
@@ -31,7 +30,7 @@ var ImMessagesSearch = common.Shortcut{
 	Command:     "+messages-search",
 	Description: "Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
 	Risk:        "read",
-	Scopes:      []string{"search:message", "contact:user.basic_profile:readonly"},
+	Scopes:      []string{"search:message", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
@@ -43,12 +42,14 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "sender-type", Desc: "sender type", Enum: []string{"user", "bot"}},
 		{Name: "exclude-sender-type", Desc: "exclude sender type", Enum: []string{"user", "bot"}},
 		{Name: "is-at-me", Type: "bool", Desc: "only messages that @me"},
+		{Name: "at-chatter-ids", Desc: "filter by @mentioned user open_ids, comma-separated (also matches messages that @all)"},
 		{Name: "start", Desc: "start time(ISO 8601) with local timezone offset (e.g. 2026-03-24T00:00:00+08:00)"},
 		{Name: "end", Desc: "end time(ISO 8601) with local timezone offset (e.g. 2026-03-25T23:59:59+08:00)"},
-		{Name: "page-size", Default: "20", Desc: "page size (1-50)"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "page token"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
+		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		req, err := buildMessagesSearchRequest(runtime)
@@ -68,12 +69,17 @@ var ImMessagesSearch = common.Shortcut{
 		} else {
 			d = d.Desc("Step 1: search messages")
 		}
-		return d.
+		d = d.
 			POST("/open-apis/im/v1/messages/search").
 			Params(dryParams).
 			Body(req.body).
 			Desc("Step 2 (if results): GET /open-apis/im/v1/messages/mget?message_ids=...  — batch fetch message details (max 50)").
 			Desc("Step 3 (if results): POST /open-apis/im/v1/chats/batch_query  — fetch chat names for context")
+		if !runtime.Bool("no-reactions") {
+			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
+				Desc("Step 4 (if results): reaction enrichment in batches of up to 20 messages. Pass --no-reactions to skip.")
+		}
+		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := buildMessagesSearchRequest(runtime)
@@ -85,7 +91,7 @@ var ImMessagesSearch = common.Shortcut{
 			return err
 		}
 
-		rawItems, hasMore, nextPageToken, truncatedByLimit, pageLimit, err := searchMessages(runtime, req)
+		rawItems, hasMore, nextPageToken, truncatedByLimit, pageLimit, notice, err := searchMessages(runtime, req)
 		if err != nil {
 			return err
 		}
@@ -96,6 +102,9 @@ var ImMessagesSearch = common.Shortcut{
 				"total":      0,
 				"has_more":   hasMore,
 				"page_token": nextPageToken,
+			}
+			if notice != "" {
+				outData["notice"] = notice
 			}
 			runtime.OutFormat(outData, nil, func(w io.Writer) {
 				fmt.Fprintln(w, "No matching messages found.")
@@ -125,6 +134,9 @@ var ImMessagesSearch = common.Shortcut{
 				"page_token":  nextPageToken,
 				"note":        "failed to fetch message details, returning ID list only",
 			}
+			if notice != "" {
+				outData["notice"] = notice
+			}
 			runtime.OutFormat(outData, nil, func(w io.Writer) {
 				fmt.Fprintf(w, "Found %d messages (failed to fetch details):\n", len(messageIds))
 				for _, id := range messageIds {
@@ -153,13 +165,19 @@ var ImMessagesSearch = common.Shortcut{
 
 		// ── Step 4: Format message content + attach chat context ──
 		nameCache := make(map[string]string)
+		// Pre-fetch merge_forward sub-messages concurrently before the per-item
+		// conversion loop, so N merge_forwards in the search hits don't
+		// serialize into N × ~1s of stall inside FormatMessageItem. Passing
+		// nameCache also pre-resolves every sub-item's sender open_id in one
+		// batched contact API call.
+		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, msgItems, nameCache)
 		enriched := make([]map[string]interface{}, 0, len(msgItems))
 		for _, item := range msgItems {
 			m, _ := item.(map[string]interface{})
 			chatId, _ := m["chat_id"].(string)
 
 			// Reuse unified content converter
-			msg := convertlib.FormatMessageItem(m, runtime, nameCache)
+			msg := convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch)
 			if chatId != "" {
 				msg["chat_id"] = chatId
 			}
@@ -184,12 +202,18 @@ var ImMessagesSearch = common.Shortcut{
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
 		convertlib.ResolveSenderNames(runtime, enriched, nameCache)
 		convertlib.AttachSenderNames(enriched, nameCache)
+		if !runtime.Bool("no-reactions") {
+			convertlib.EnrichReactions(runtime, enriched)
+		}
 
 		outData := map[string]interface{}{
 			"messages":   enriched,
 			"total":      len(enriched),
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
+		}
+		if notice != "" {
+			outData["notice"] = notice
 		}
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			if len(enriched) == 0 {
@@ -246,16 +270,15 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	chatTypeFlag := runtime.Str("chat-type")
 	senderTypeFlag := runtime.Str("sender-type")
 	excludeSenderTypeFlag := runtime.Str("exclude-sender-type")
+	atChatterIdsFlag := runtime.Str("at-chatter-ids")
 	startFlag := runtime.Str("start")
 	endFlag := runtime.Str("end")
-	pageSizeStr := runtime.Str("page-size")
 	pageToken := runtime.Str("page-token")
-	pageLimitStr := strings.TrimSpace(runtime.Str("page-limit"))
 
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		pageLimit, err := strconv.Atoi(pageLimitStr)
-		if err != nil || pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
-			return nil, output.ErrValidation("--page-limit must be an integer between 1 and 40")
+		pageLimit := runtime.Int("page-limit")
+		if pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 40").WithParam("--page-limit")
 		}
 	}
 
@@ -265,7 +288,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if startFlag != "" {
 		ts, err := common.ParseTime(startFlag)
 		if err != nil {
-			return nil, output.ErrValidation("--start: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		startTs = ts
 		start := startFlag
@@ -274,7 +297,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if endFlag != "" {
 		ts, err := common.ParseTime(endFlag, "end")
 		if err != nil {
-			return nil, output.ErrValidation("--end: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		endTs = ts
 		end := endFlag
@@ -284,7 +307,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 		sv, _ := strconv.ParseInt(startTs, 10, 64)
 		ev, _ := strconv.ParseInt(endTs, 10, 64)
 		if sv > ev {
-			return nil, output.ErrValidation("--start cannot be later than --end")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start cannot be later than --end")
 		}
 	}
 	if len(timeRange) > 0 {
@@ -293,12 +316,12 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 
 	if senderTypeFlag != "" && excludeSenderTypeFlag != "" {
 		if senderTypeFlag == excludeSenderTypeFlag {
-			return nil, output.ErrValidation("--sender-type and --exclude-sender-type cannot be the same value")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--sender-type and --exclude-sender-type cannot be the same value")
 		}
 	}
 	if chatFlag != "" {
 		for _, chatID := range common.SplitCSV(chatFlag) {
-			if _, err := common.ValidateChatID(chatID); err != nil {
+			if _, err := common.ValidateChatIDTyped("--chat-id", chatID); err != nil {
 				return nil, err
 			}
 		}
@@ -306,7 +329,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	}
 	if senderFlag != "" {
 		for _, userID := range common.SplitCSV(senderFlag) {
-			if _, err := common.ValidateUserID(userID); err != nil {
+			if _, err := common.ValidateUserIDTyped("--sender", userID); err != nil {
 				return nil, err
 			}
 		}
@@ -327,22 +350,27 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if runtime.Bool("is-at-me") {
 		filter["is_at_me"] = true
 	}
+	if atChatterIdsFlag != "" {
+		ids := common.SplitCSV(atChatterIdsFlag)
+		for _, id := range ids {
+			if _, err := common.ValidateUserIDTyped("--at-chatter-ids", id); err != nil {
+				return nil, err
+			}
+		}
+		filter["at_chatter_ids"] = ids
+	}
 
 	body := map[string]interface{}{"query": query}
 	if len(filter) > 0 {
 		body["filter"] = filter
 	}
 
-	pageSize := messagesSearchDefaultPageSize
-	if pageSizeStr != "" {
-		n, err := strconv.Atoi(pageSizeStr)
-		if err != nil || n < 1 {
-			return nil, output.ErrValidation("--page-size must be an integer between 1 and 50")
-		}
-		if n > messagesSearchMaxPageSize {
-			n = messagesSearchMaxPageSize
-		}
-		pageSize = n
+	pageSize := runtime.Int("page-size")
+	if pageSize < 1 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
+	}
+	if pageSize > messagesSearchMaxPageSize {
+		pageSize = messagesSearchMaxPageSize
 	}
 
 	params := larkcore.QueryParams{
@@ -358,6 +386,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	}, nil
 }
 
+// messagesSearchPaginationConfig derives auto-pagination mode and page limit.
 func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int) {
 	autoPaginate = runtime.Bool("page-all")
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
@@ -366,16 +395,15 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 
 	pageLimit = messagesSearchDefaultPageLimit
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		if n, err := strconv.Atoi(strings.TrimSpace(runtime.Str("page-limit"))); err == nil && n > 0 {
-			pageLimit = min(n, messagesSearchMaxPageLimit)
-		}
+		pageLimit = min(runtime.Int("page-limit"), messagesSearchMaxPageLimit)
 	} else if runtime.Bool("page-all") {
 		pageLimit = messagesSearchMaxPageLimit
 	}
 	return autoPaginate, pageLimit
 }
 
-func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, error) {
+// searchMessages fetches message search pages and returns the first server notice.
+func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, string, error) {
 	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 	pageToken := ""
 	if tokens := req.params["page_token"]; len(tokens) > 0 {
@@ -393,6 +421,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 		lastPageToken    string
 		truncatedByLimit bool
 		pageCount        int
+		notice           string
 	)
 
 	for {
@@ -404,11 +433,14 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 			params["page_token"] = []string{pageToken}
 		}
 
-		searchData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
+		searchData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
 		if err != nil {
-			return nil, false, "", false, pageLimit, err
+			return nil, false, "", false, pageLimit, "", err
 		}
 
+		if notice == "" {
+			notice, _ = searchData["notice"].(string)
+		}
 		items, _ := searchData["items"].([]interface{})
 		allItems = append(allItems, items...)
 		lastHasMore, lastPageToken = common.PaginationMeta(searchData)
@@ -424,13 +456,14 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 		pageToken = lastPageToken
 	}
 
-	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, nil
+	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, notice, nil
 }
 
+// batchMGetMessages fetches message details in API-sized batches.
 func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {
 	var items []interface{}
 	for _, batch := range chunkStrings(messageIds, messagesSearchMGetBatchSize) {
-		mgetData, err := runtime.DoAPIJSON(http.MethodGet, buildMGetURL(batch), nil, nil)
+		mgetData, err := runtime.DoAPIJSONTyped(http.MethodGet, buildMGetURL(batch), nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -440,29 +473,17 @@ func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]i
 	return items, nil
 }
 
+// batchQueryChatContexts fetches chat metadata best-effort for message rows.
 func batchQueryChatContexts(runtime *common.RuntimeContext, chatIds []string) map[string]map[string]interface{} {
 	chatContexts := map[string]map[string]interface{}{}
-	for _, batch := range chunkStrings(chatIds, messagesSearchChatBatchSize) {
-		chatRes, chatErr := runtime.DoAPIJSON(
-			http.MethodPost, "/open-apis/im/v1/chats/batch_query",
-			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
-			map[string]interface{}{"chat_ids": batch},
-		)
-		if chatErr != nil {
-			continue
-		}
-		if chatItems, ok := chatRes["items"].([]interface{}); ok {
-			for _, ci := range chatItems {
-				cm, _ := ci.(map[string]interface{})
-				if cid, _ := cm["chat_id"].(string); cid != "" {
-					chatContexts[cid] = cm
-				}
-			}
-		}
+	// Best-effort: a failed chunk only loses its own entries.
+	for _, batch := range chunkStrings(chatIds, chatBatchQuerySize) {
+		_ = queryChatBatch(runtime, batch, chatContexts)
 	}
 	return chatContexts
 }
 
+// chunkStrings splits a string slice into fixed-size batches.
 func chunkStrings(items []string, chunkSize int) [][]string {
 	if len(items) == 0 || chunkSize <= 0 {
 		return nil

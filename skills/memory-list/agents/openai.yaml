@@ -1,0 +1,7 @@
+interface:
+  display_name: "memory-list"
+  short_description: "List Memory Hub entries visible to the current user"
+  default_prompt: "Use $memory-list to list the Memory Hub entries visible to me."
+
+policy:
+  allow_implicit_invocation: true

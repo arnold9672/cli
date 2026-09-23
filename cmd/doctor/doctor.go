@@ -8,17 +8,20 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	larkauth "github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/identitydiag"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/transport"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
 )
 
 // DoctorOptions holds inputs for the doctor command.
@@ -42,6 +45,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmdutil.DisableAuthCheck(cmd)
 	cmd.Flags().BoolVar(&opts.Offline, "offline", false, "skip network checks (only verify local state)")
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }
@@ -49,7 +53,7 @@ func NewCmdDoctor(f *cmdutil.Factory) *cobra.Command {
 // checkResult represents one diagnostic check.
 type checkResult struct {
 	Name    string `json:"name"`
-	Status  string `json:"status"` // "pass", "fail", "skip"
+	Status  string `json:"status"` // "pass", "warn", "fail", "skip"
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
 }
@@ -83,7 +87,20 @@ func doctorRun(opts *DoctorOptions) error {
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
 	if err != nil {
-		checks = append(checks, fail("config_file", err.Error(), "run: lark-cli config init"))
+		// For "config not present" cases, prefer the workspace-aware
+		// NotConfiguredError message + hint (e.g. "openclaw context
+		// detected but lark-cli is not bound to it" → bind --help) over
+		// the OS-level "open ... no such file or directory".
+		// For other errors (parse, perms), keep the raw error so the
+		// underlying problem is still visible.
+		msg, hint := err.Error(), ""
+		if errors.Is(err, os.ErrNotExist) {
+			var cfgErr *errs.ConfigError
+			if errors.As(core.NotConfiguredError(), &cfgErr) {
+				msg, hint = cfgErr.Message, cfgErr.Hint
+			}
+		}
+		checks = append(checks, fail("config_file", msg, hint))
 		return finishDoctor(f, checks)
 	}
 	checks = append(checks, pass("config_file", "config.json found"))
@@ -92,7 +109,7 @@ func doctorRun(opts *DoctorOptions) error {
 	cfg, err := f.Config()
 	if err != nil {
 		hint := ""
-		var cfgErr *core.ConfigError
+		var cfgErr *errs.ConfigError
 		if errors.As(err, &cfgErr) {
 			hint = cfgErr.Hint
 		}
@@ -103,57 +120,29 @@ func doctorRun(opts *DoctorOptions) error {
 
 	ep := core.ResolveEndpoints(cfg.Brand)
 
-	// ── 3. Token exists ──
-	if cfg.UserOpenId == "" {
-		checks = append(checks, fail("token_exists", "no user logged in", "run: lark-cli auth login --help"))
-		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
-		return finishDoctor(f, checks)
-	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
-	if stored == nil {
-		checks = append(checks, fail("token_exists", "no token in keychain for "+cfg.UserOpenId, "run: lark-cli auth login --help"))
-		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
-		return finishDoctor(f, checks)
-	}
-	checks = append(checks, pass("token_exists", fmt.Sprintf("token found for %s (%s)", cfg.UserName, cfg.UserOpenId)))
-
-	// ── 4. Token local validity ──
-	status := larkauth.TokenStatus(stored)
-	switch status {
-	case "valid":
-		checks = append(checks, pass("token_local", "token valid, expires "+time.UnixMilli(stored.ExpiresAt).Format(time.RFC3339)))
-	case "needs_refresh":
-		checks = append(checks, pass("token_local", "token needs refresh (will auto-refresh on next call)"))
-	default: // expired
-		checks = append(checks, fail("token_local", "token expired", "run: lark-cli auth login --help"))
-		checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
-		return finishDoctor(f, checks)
-	}
-
-	// ── 5. Token server verification ──
-	if opts.Offline {
-		checks = append(checks, skip("token_verified", "skipped (--offline)"))
+	// ── 3. Identity readiness ──
+	diagnostics := identitydiag.Diagnose(opts.Ctx, f, cfg, !opts.Offline)
+	checks = append(checks,
+		identityCheck("bot_identity", diagnostics.Bot),
+		identityCheck("user_identity", diagnostics.User),
+	)
+	if diagnostics.Bot.Available || diagnostics.User.Available {
+		checks = append(checks, pass("identity_ready", "at least one identity is available"))
 	} else {
-		httpClient := mustHTTPClient(f)
-		token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
-		if err != nil {
-			checks = append(checks, fail("token_verified", "cannot obtain valid token: "+err.Error(), "run: lark-cli auth login --help"))
-		} else {
-			sdk, err := f.LarkClient()
-			if err != nil {
-				checks = append(checks, fail("token_verified", "SDK init failed: "+err.Error(), ""))
-			} else if err := larkauth.VerifyUserToken(opts.Ctx, sdk, token); err != nil {
-				checks = append(checks, fail("token_verified", "server rejected token: "+err.Error(), "run: lark-cli auth login --help"))
-			} else {
-				checks = append(checks, pass("token_verified", "server confirmed token is valid"))
-			}
-		}
+		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", "run: lark-cli auth status --verify"))
 	}
 
-	// ── 6 & 7. Endpoint reachability ──
+	// ── 4 & 5. Endpoint reachability ──
 	checks = append(checks, networkChecks(opts.Ctx, opts, ep)...)
 
 	return finishDoctor(f, checks)
+}
+
+func identityCheck(name string, id identitydiag.Identity) checkResult {
+	if id.Available {
+		return pass(name, id.Message)
+	}
+	return warn(name, id.Message, id.Hint)
 }
 
 // networkChecks probes Open API and MCP endpoints concurrently.
@@ -165,7 +154,9 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 		}
 	}
 
-	httpClient := &http.Client{}
+	// Use the shared proxy-plugin-aware transport so connectivity checks reflect
+	// the real egress path (and are blocked when proxy plugin fails closed).
+	httpClient := transport.NewHTTPClient(0)
 	mcpURL := ep.MCP + "/mcp"
 
 	type probeResult struct {
@@ -217,15 +208,6 @@ func probeEndpoint(ctx context.Context, client *http.Client, url string) error {
 	return nil
 }
 
-// mustHTTPClient returns f.HttpClient() or a default client.
-func mustHTTPClient(f *cmdutil.Factory) *http.Client {
-	c, err := f.HttpClient()
-	if err != nil {
-		return &http.Client{Timeout: 30 * time.Second}
-	}
-	return c
-}
-
 // checkCLIUpdate actively queries the npm registry for the latest version.
 // Unlike the root-level async check, this does a synchronous fetch with timeout
 // and works regardless of build version (dev builds included).
@@ -238,7 +220,7 @@ func checkCLIUpdate() []checkResult {
 	if update.IsNewer(latest, current) {
 		return []checkResult{warn("cli_update",
 			fmt.Sprintf("%s → %s available", current, latest),
-			"run: lark-cli update (or: npm install -g @larksuite/cli)")}
+			"run: lark-cli update")}
 	}
 	return []checkResult{pass("cli_update", latest+" (up to date)")}
 }
@@ -253,8 +235,9 @@ func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	}
 
 	result := map[string]interface{}{
-		"ok":     allOK,
-		"checks": checks,
+		"ok":        allOK,
+		"workspace": core.CurrentWorkspace().Display(),
+		"checks":    checks,
 	}
 	output.PrintJson(f.IOStreams.Out, result)
 	if !allOK {

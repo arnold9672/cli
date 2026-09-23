@@ -7,7 +7,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseDashboardBlockGet = common.Shortcut{
@@ -23,6 +23,11 @@ var BaseDashboardBlockGet = common.Shortcut{
 		dashboardIDFlag(true),
 		blockIDFlag(true),
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
+	},
+	Tips: []string{
+		"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
+		"Use this command for block metadata such as name, type, layout, and data_config.",
+		"Use +dashboard-block-get-data when you need the computed chart result instead of metadata.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{}

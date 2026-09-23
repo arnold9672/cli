@@ -4,28 +4,71 @@
 package credential
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sync"
 
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/keychain"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/auth"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/keychain"
 
-	extcred "github.com/larksuite/cli/extension/credential"
+	extcred "code.byted.org/lark_search/larksuite-cli/extension/credential"
 )
+
+// classifyTATResponseCode wraps a deterministic (non-transient) failure from the
+// unified Token Endpoint into the canonical typed errs.* error. The v3 endpoint
+// reports failures using the OAuth 2.0 model — an `error` string plus an
+// optional numeric `code` — instead of the legacy `{code, msg}` shape.
+//
+// invalid_client / unauthorized_client mean the configured app_id/app_secret
+// cannot mint a token; from the user's perspective that is the same actionable
+// CategoryConfig/InvalidClient failure the legacy 10003/10014 codes produced.
+// Every other deterministic error falls through to BuildAPIError, which still
+// yields a typed error so probe callers (errs.IsTyped) surface it rather than
+// swallowing it. Transient/server-side failures (5xx / server_error) are
+// filtered out by FetchTAT before this is called, so they stay untyped.
+func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) error {
+	msg := errDesc
+	if msg == "" {
+		msg = oauthErr
+	}
+	switch oauthErr {
+	case "invalid_client", "unauthorized_client":
+		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
+			WithCode(code).
+			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
+	}
+	if err := errclass.BuildAPIError(map[string]any{
+		"code": code,
+		"msg":  msg,
+	}, errclass.ClassifyContext{
+		Brand: brand,
+		AppID: appID,
+	}); err != nil {
+		return err
+	}
+	// BuildAPIError returns nil for code 0 (Feishu's success convention), but this
+	// function is only reached once FetchTAT has ruled out success — a non-credential
+	// OAuth error (e.g. invalid_scope) can arrive with code 0 and is still a
+	// deterministic rejection. Back it with a typed APIError so callers never receive
+	// the ("", nil) "empty token, no error" pair.
+	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).WithCode(code)
+}
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
-	keychain keychain.KeychainAccess
+	keychain func() keychain.KeychainAccess
 	profile  string
 }
 
-func NewDefaultAccountProvider(kc keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+	if kc == nil {
+		kc = keychain.Default
+	}
 	return &DefaultAccountProvider{keychain: kc, profile: profile}
 }
 
@@ -33,10 +76,10 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 	// Load config once — used for both credentials and strict mode.
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
-		return nil, &core.ConfigError{Code: 2, Type: "config", Message: "not configured", Hint: "run `lark-cli config init --new` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete setup."}
+		return nil, core.NotConfiguredError()
 	}
 
-	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain, p.profile)
+	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)
 	if err != nil {
 		return nil, err
 	}
@@ -114,8 +157,8 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
-// resolveTAT resolves a tenant access token. Result is cached after first call.
-// NOTE: Uses sync.Once — only the context from the first call is used.
+// resolveTAT resolves a tenant access token. The result is cached after the first
+// call via sync.Once — only the context from the first call is used.
 func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
 	p.tatOnce.Do(func() {
 		p.tatResult, p.tatErr = p.doResolveTAT(ctx)
@@ -132,42 +175,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, err
 	}
-	ep := core.ResolveEndpoints(acct.Brand)
-	url := ep.Open + "/open-apis/auth/v3/tenant_access_token/internal"
-
-	body, err := json.Marshal(map[string]string{
-		"app_id":     acct.AppID,
-		"app_secret": acct.AppSecret,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal TAT request: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TAT API returned HTTP %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		TenantAccessToken string `json:"tenant_access_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse TAT response: %w", err)
-	}
-	if result.Code != 0 {
-		return nil, fmt.Errorf("TAT API error: [%d] %s", result.Code, result.Msg)
-	}
-	return &TokenResult{Token: result.TenantAccessToken}, nil
+	return &TokenResult{Token: token}, nil
 }

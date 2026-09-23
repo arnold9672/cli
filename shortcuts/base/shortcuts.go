@@ -3,11 +3,18 @@
 
 package base
 
-import "github.com/larksuite/cli/shortcuts/common"
+import "code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 
 // Shortcuts returns all base shortcuts.
 func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
+		BaseURLResolve,
+		BaseTitleResolve,
+		BaseBaseBlockList,
+		BaseBaseBlockCreate,
+		BaseBaseBlockMove,
+		BaseBaseBlockRename,
+		BaseBaseBlockDelete,
 		BaseTableList,
 		BaseTableGet,
 		BaseTableCreate,
@@ -42,7 +49,10 @@ func Shortcuts() []common.Shortcut {
 		BaseRecordUpsert,
 		BaseRecordBatchCreate,
 		BaseRecordBatchUpdate,
+		BaseRecordShareLinkCreate,
 		BaseRecordUploadAttachment,
+		BaseRecordDownloadAttachment,
+		BaseRecordRemoveAttachment,
 		BaseRecordDelete,
 		BaseRecordHistoryList,
 		BaseBaseGet,
@@ -67,10 +77,12 @@ func Shortcuts() []common.Shortcut {
 		BaseFormsList,
 		BaseFormUpdate,
 		BaseFormGet,
+		BaseFormDetail,
 		BaseFormQuestionsCreate,
 		BaseFormQuestionsDelete,
 		BaseFormQuestionsUpdate,
 		BaseFormQuestionsList,
+		BaseFormSubmit,
 		BaseDashboardList,
 		BaseDashboardGet,
 		BaseDashboardCreate,
@@ -79,6 +91,7 @@ func Shortcuts() []common.Shortcut {
 		BaseDashboardArrange,
 		BaseDashboardBlockList,
 		BaseDashboardBlockGet,
+		BaseDashboardBlockGetData,
 		BaseDashboardBlockCreate,
 		BaseDashboardBlockUpdate,
 		BaseDashboardBlockDelete,

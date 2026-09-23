@@ -6,7 +6,7 @@ package base
 import (
 	"context"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseTableDelete = common.Shortcut{
@@ -17,7 +17,12 @@ var BaseTableDelete = common.Shortcut{
 	Scopes:      []string{"base:table:delete"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true)},
-	DryRun:      dryRunTableDelete,
+	Tips: []string{
+		`Example: lark-cli base +table-delete --base-token <base_token> --table-id "Old Tasks" --yes`,
+		"table-id accepts a table ID (tbl...) or the table name in the current Base.",
+		baseHighRiskYesTip,
+	},
+	DryRun: dryRunTableDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeTableDelete(runtime)
 	},

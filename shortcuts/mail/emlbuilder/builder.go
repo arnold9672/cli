@@ -52,8 +52,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/shortcuts/mail/filecheck"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/validate"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/filecheck"
 )
 
 // MaxEMLSize is the maximum allowed raw EML size in bytes.
@@ -61,9 +62,12 @@ const MaxEMLSize = 25 * 1024 * 1024 // 25 MB
 
 // readFile reads the named file and returns its contents via FileIO.
 func readFile(fio fileio.FileIO, path string) ([]byte, error) {
+	if _, err := validate.SafeInputPath(path); err != nil {
+		return nil, fmt.Errorf("attachment %q: %w", path, err) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
+	}
 	f, err := fio.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("attachment %q: %w", path, err)
+		return nil, fmt.Errorf("attachment %q: %w", path, err) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	defer f.Close()
 	return io.ReadAll(f)
@@ -73,26 +77,28 @@ func readFile(fio fileio.FileIO, path string) ([]byte, error) {
 // All setter methods return a copy of the Builder (immutable/fluent style),
 // so a base builder can be reused across multiple goroutines safely.
 type Builder struct {
-	fio                 fileio.FileIO // injected via WithFileIO; must be set before AddFile* calls
-	from                mail.Address
-	to                  []mail.Address
-	cc                  []mail.Address
-	bcc                 []mail.Address
-	replyTo             []mail.Address
-	subject             string
-	date                time.Time
-	messageID           string
-	inReplyTo           string // raw value, without angle brackets
-	references          string // space-separated list of message IDs, with angle brackets
-	lmsReplyToMessageID string // Lark internal message_id of the original message
-	textBody            []byte
-	htmlBody            []byte
-	calendarBody        []byte
-	attachments         []attachment
-	inlines             []inline
-	extraHeaders        [][2]string // ordered list of [name, value] pairs
-	allowNoRecipients   bool        // when true, Build() skips the recipient check (for drafts)
-	err                 error
+	fio                       fileio.FileIO // injected via WithFileIO; must be set before AddFile* calls
+	from                      mail.Address
+	to                        []mail.Address
+	cc                        []mail.Address
+	bcc                       []mail.Address
+	replyTo                   []mail.Address
+	dispositionNotificationTo []mail.Address
+	subject                   string
+	date                      time.Time
+	messageID                 string
+	inReplyTo                 string // raw value, without angle brackets
+	references                string // space-separated list of message IDs, with angle brackets
+	lmsReplyToMessageID       string // Lark internal message_id of the original message
+	textBody                  []byte
+	htmlBody                  []byte
+	calendarBody              []byte
+	attachments               []attachment
+	inlines                   []inline
+	extraHeaders              [][2]string // ordered list of [name, value] pairs
+	allowNoRecipients         bool        // when true, Build() skips the recipient check (for drafts)
+	isReadReceiptMail         bool        // when true, Build() writes X-Lark-Read-Receipt-Mail: 1
+	err                       error
 }
 
 // WithFileIO returns a copy of b with the given FileIO.
@@ -101,6 +107,9 @@ func (b Builder) WithFileIO(fio fileio.FileIO) Builder {
 	return b
 }
 
+// attachment is a regular (non-inline) MIME attachment — bytes plus MIME
+// metadata — accumulated on the Builder and serialized under the
+// multipart/mixed outer envelope.
 type attachment struct {
 	content     []byte
 	contentType string
@@ -128,10 +137,10 @@ func New() Builder {
 func validateHeaderValue(v string) error {
 	for _, r := range v {
 		if r != '\t' && (r < 0x20 || r == 0x7f) {
-			return fmt.Errorf("emlbuilder: header value contains control character: %q", v)
+			return fmt.Errorf("emlbuilder: header value contains control character: %q", v) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 		if isHeaderDangerousUnicode(r) {
-			return fmt.Errorf("emlbuilder: header value contains dangerous Unicode character: %q", v)
+			return fmt.Errorf("emlbuilder: header value contains dangerous Unicode character: %q", v) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 	}
 	return nil
@@ -160,11 +169,11 @@ func isHeaderDangerousUnicode(r rune) bool {
 // or non-printable ASCII characters, as required by RFC 5322 field-name syntax.
 func validateHeaderName(n string) error {
 	if strings.ContainsAny(n, ":\r\n") {
-		return fmt.Errorf("emlbuilder: header name contains ':', CR, or LF: %q", n)
+		return fmt.Errorf("emlbuilder: header name contains ':', CR, or LF: %q", n) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	for _, r := range n {
 		if r < 0x21 || r > 0x7e {
-			return fmt.Errorf("emlbuilder: header name contains non-printable character: %q", n)
+			return fmt.Errorf("emlbuilder: header name contains non-printable character: %q", n) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 	}
 	return nil
@@ -174,7 +183,7 @@ func validateHeaderName(n string) error {
 // escape the quoted-string encoding used by mail.Address.String() and inject headers.
 func validateDisplayName(name string) error {
 	if strings.ContainsAny(name, "\r\n") {
-		return fmt.Errorf("emlbuilder: display name contains CR or LF: %q", name)
+		return fmt.Errorf("emlbuilder: display name contains CR or LF: %q", name) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	return nil
 }
@@ -184,7 +193,7 @@ func validateDisplayName(name string) error {
 func validateCID(cid string) error {
 	for _, r := range cid {
 		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("emlbuilder: content ID contains control character: %q", cid)
+			return fmt.Errorf("emlbuilder: content ID contains control character: %q", cid) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 	}
 	return nil
@@ -290,6 +299,36 @@ func (b Builder) ReplyTo(name, addr string) Builder {
 	return cp
 }
 
+// DispositionNotificationTo appends an address to the Disposition-Notification-To header,
+// which requests a Message Disposition Notification (MDN, read receipt) from the recipient's
+// mail user agent (RFC 3798). name may be empty.
+//
+// Recipients' clients are not obliged to honour this header; user agents commonly prompt
+// the recipient, and many silently ignore it.
+func (b Builder) DispositionNotificationTo(name, addr string) Builder {
+	if addr == "" {
+		return b
+	}
+	if b.err != nil {
+		return b
+	}
+	if err := validateDisplayName(name); err != nil {
+		b.err = err
+		return b
+	}
+	// addr ends up inside mail.Address.String() and written unescaped into
+	// the Disposition-Notification-To header; validate it the same way as
+	// other header value inputs to prevent CR/LF header injection and
+	// visual-spoofing via Bidi / zero-width code points.
+	if err := validateHeaderValue(addr); err != nil {
+		b.err = err
+		return b
+	}
+	cp := b.copySlices()
+	cp.dispositionNotificationTo = append(cp.dispositionNotificationTo, mail.Address{Name: name, Address: addr})
+	return cp
+}
+
 // Subject sets the Subject header.
 // Non-ASCII characters are automatically RFC 2047 B-encoded.
 // Returns an error builder if subject contains CR or LF.
@@ -385,8 +424,9 @@ func (b Builder) HTMLBody(body []byte) Builder {
 }
 
 // CalendarBody sets the text/calendar body (e.g. for meeting invitations).
-// May be combined with TextBody and/or HTMLBody; the resulting parts are wrapped
-// in multipart/alternative.
+// When combined with TextBody or HTMLBody, the calendar part is placed inside
+// multipart/alternative alongside the body parts, matching the Feishu client
+// convention for calendar invitation emails.
 func (b Builder) CalendarBody(body []byte) Builder {
 	b.calendarBody = body
 	return b
@@ -567,6 +607,21 @@ func (b Builder) AllowNoRecipients() Builder {
 	return b
 }
 
+// IsReadReceiptMail marks this message as a read-receipt response.
+// When true, Build() writes the private header "X-Lark-Read-Receipt-Mail: 1",
+// which data-access extracts into MailBodyExtra.IsReadReceiptMail on draft
+// creation so the subsequent DraftSend applies the READ_RECEIPT_SENT label.
+//
+// The header is a Lark-internal signal; smtp-out-mail-out is expected to
+// strip X-Lark-* private headers before external delivery.
+func (b Builder) IsReadReceiptMail(v bool) Builder {
+	if b.err != nil {
+		return b
+	}
+	b.isReadReceiptMail = v
+	return b
+}
+
 // Header appends an extra header to the message.
 // Multiple calls with the same name result in multiple header lines.
 // Returns an error builder if name or value contains CR, LF, or (for names) ':'.
@@ -621,10 +676,10 @@ func (b Builder) Build() ([]byte, error) {
 		return nil, b.err
 	}
 	if b.from.Address == "" {
-		return nil, fmt.Errorf("emlbuilder: From address is required")
+		return nil, fmt.Errorf("emlbuilder: From address is required") //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	if !b.allowNoRecipients && len(b.to)+len(b.cc)+len(b.bcc) == 0 {
-		return nil, fmt.Errorf("emlbuilder: at least one recipient (To/CC/BCC) is required")
+		return nil, fmt.Errorf("emlbuilder: at least one recipient (To/CC/BCC) is required") //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 
 	date := b.date
@@ -659,6 +714,12 @@ func (b Builder) Build() ([]byte, error) {
 	if len(b.replyTo) > 0 {
 		writeHeader(&buf, "Reply-To", joinAddresses(b.replyTo))
 	}
+	if len(b.dispositionNotificationTo) > 0 {
+		writeHeader(&buf, "Disposition-Notification-To", joinAddresses(b.dispositionNotificationTo))
+	}
+	if b.isReadReceiptMail {
+		writeHeader(&buf, "X-Lark-Read-Receipt-Mail", "1")
+	}
 	if b.inReplyTo != "" {
 		writeHeader(&buf, "In-Reply-To", "<"+b.inReplyTo+">")
 		if b.lmsReplyToMessageID != "" {
@@ -675,6 +736,9 @@ func (b Builder) Build() ([]byte, error) {
 	// ── Body ───────────────────────────────────────────────────────────────────
 	// Full MIME hierarchy (outer layers only present when needed):
 	//   multipart/mixed → multipart/related → multipart/alternative → body parts
+	//
+	// text/calendar lives inside multipart/alternative as an alternative
+	// representation of the message body, matching the Feishu client behavior.
 	if len(b.attachments) > 0 {
 		outerB := newBoundary()
 		writeHeader(&buf, "Content-Type", "multipart/mixed; boundary="+outerB)
@@ -694,7 +758,7 @@ func (b Builder) Build() ([]byte, error) {
 
 	raw := buf.Bytes()
 	if len(raw) > MaxEMLSize {
-		return nil, fmt.Errorf("emlbuilder: EML size %.1f MB exceeds the %.0f MB limit",
+		return nil, fmt.Errorf("emlbuilder: EML size %.1f MB exceeds the %.0f MB limit", //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 			float64(len(raw))/1024/1024, float64(MaxEMLSize)/1024/1024)
 	}
 	return raw, nil
@@ -720,6 +784,7 @@ func (b Builder) copySlices() Builder {
 	cp.cc = append([]mail.Address{}, b.cc...)
 	cp.bcc = append([]mail.Address{}, b.bcc...)
 	cp.replyTo = append([]mail.Address{}, b.replyTo...)
+	cp.dispositionNotificationTo = append([]mail.Address{}, b.dispositionNotificationTo...)
 	cp.attachments = append([]attachment{}, b.attachments...)
 	cp.inlines = append([]inline{}, b.inlines...)
 	cp.extraHeaders = append([][2]string{}, b.extraHeaders...)
@@ -752,27 +817,27 @@ func writePrimaryBody(buf *bytes.Buffer, b Builder) {
 	}
 }
 
-// writeAlternativeOrSingleBody writes the text body block.
-// If multiple body types (text/plain, text/html, text/calendar) are present,
-// they are wrapped in multipart/alternative. Otherwise a single part is written.
+// writeAlternativeOrSingleBody writes the body block. When multiple content
+// types coexist (text/plain, text/html, text/calendar), they are wrapped in
+// multipart/alternative. text/calendar lives inside alternative as an
+// alternative representation, matching the Feishu client behavior.
 func writeAlternativeOrSingleBody(buf *bytes.Buffer, b Builder) {
 	hasText := len(b.textBody) > 0
 	hasHTML := len(b.htmlBody) > 0
 	hasCal := len(b.calendarBody) > 0
 
-	bodyCount := 0
+	partCount := 0
 	if hasText {
-		bodyCount++
+		partCount++
 	}
 	if hasHTML {
-		bodyCount++
+		partCount++
 	}
 	if hasCal {
-		bodyCount++
+		partCount++
 	}
 
-	switch {
-	case bodyCount > 1:
+	if partCount > 1 {
 		boundary := newBoundary()
 		writeHeader(buf, "Content-Type", "multipart/alternative; boundary="+boundary)
 		buf.WriteByte('\n')
@@ -783,15 +848,15 @@ func writeAlternativeOrSingleBody(buf *bytes.Buffer, b Builder) {
 			writeBodyPart(buf, boundary, "text/html", b.htmlBody)
 		}
 		if hasCal {
-			writeBodyPart(buf, boundary, "text/calendar", b.calendarBody)
+			fmt.Fprintf(buf, "--%s\n", boundary)
+			writeCalendarPart(buf, b.calendarBody)
 		}
 		fmt.Fprintf(buf, "--%s--\n", boundary)
-	case hasHTML:
+	} else if hasHTML {
 		writeSingleBodyPartHeaders(buf, "text/html", b.htmlBody)
-	case hasCal:
-		writeSingleBodyPartHeaders(buf, "text/calendar", b.calendarBody)
-	default:
-		// text/plain (also handles empty body)
+	} else if hasCal {
+		writeCalendarPart(buf, b.calendarBody)
+	} else {
 		writeSingleBodyPartHeaders(buf, "text/plain", b.textBody)
 	}
 }
@@ -879,12 +944,24 @@ func encodeBodyContent(body []byte, cte string) string {
 	return string(body)
 }
 
-// writeFoldedBody writes the encoded part body with fixed-width line wrapping.
-// RFC 2045 recommends 76 characters per encoded line; we apply the same width
-// to all body parts for consistent MIME output.
+// lineWidthForCTE returns the appropriate line width for the given CTE.
+// RFC 2045: base64 and quoted-printable lines MUST NOT exceed 76 characters.
+// RFC 5322: 7bit/8bit lines MUST NOT exceed 998 characters.
+func lineWidthForCTE(cte string) int {
+	switch cte {
+	case "base64", "quoted-printable":
+		return 76
+	default: // 7bit, 8bit
+		return 998
+	}
+}
+
+// writeFoldedBody writes the encoded part body with line wrapping.
+// The width limit depends on the Content-Transfer-Encoding:
+// base64/quoted-printable use 76 chars (RFC 2045), 7bit uses 998 (RFC 5322).
 func writeFoldedBody(buf *bytes.Buffer, encoded string, width int) {
 	if width <= 0 {
-		width = 76
+		width = 998
 	}
 	for _, line := range strings.Split(encoded, "\n") {
 		for len(line) > width {
@@ -910,7 +987,7 @@ func writeBodyPart(buf *bytes.Buffer, boundary, ct string, body []byte) {
 	cte := selectCTE(body)
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
-	writeFoldedBody(buf, encodeBodyContent(body, cte), 76)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
 }
 
 // writeSingleBodyPartHeaders writes the Content-Type / CTE headers and body
@@ -920,7 +997,36 @@ func writeSingleBodyPartHeaders(buf *bytes.Buffer, ct string, body []byte) {
 	cte := selectCTE(body)
 	fmt.Fprintf(buf, "Content-Type: %s; charset=UTF-8\n", ct)
 	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
-	writeFoldedBody(buf, encodeBodyContent(body, cte), 76)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
+}
+
+// writeCalendarPart writes the text/calendar MIME part. The method= parameter
+// is derived from the METHOD property in the ICS body (defaulting to REQUEST
+// when absent) so that passthrough ICS with METHOD:CANCEL or METHOD:REPLY
+// produce a Content-Type that matches the body.
+func writeCalendarPart(buf *bytes.Buffer, body []byte) {
+	method := extractICSMethod(body)
+	if method == "" {
+		method = "REQUEST"
+	}
+	cte := selectCTE(body)
+	fmt.Fprintf(buf, "Content-Type: text/calendar; method=%s; charset=UTF-8\n", method)
+	fmt.Fprintf(buf, "Content-Transfer-Encoding: %s\n\n", cte)
+	writeFoldedBody(buf, encodeBodyContent(body, cte), lineWidthForCTE(cte))
+	buf.WriteByte('\n')
+}
+
+// extractICSMethod scans the ICS body for the top-level METHOD property and
+// returns its value (e.g. "REQUEST", "CANCEL", "REPLY"). Returns "" when the
+// property is absent so callers can apply their own default.
+func extractICSMethod(body []byte) string {
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(strings.ToUpper(line), "METHOD:") {
+			return strings.TrimSpace(line[7:])
+		}
+	}
+	return ""
 }
 
 // writeAttachmentPart writes a MIME attachment part.

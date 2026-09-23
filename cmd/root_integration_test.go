@@ -7,20 +7,31 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"reflect"
+	"os"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/cmd/api"
-	"github.com/larksuite/cli/cmd/auth"
-	"github.com/larksuite/cli/cmd/service"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts"
+	"code.byted.org/lark_search/larksuite-cli/cmd/api"
+	"code.byted.org/lark_search/larksuite-cli/cmd/auth"
+	"code.byted.org/lark_search/larksuite-cli/cmd/service"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/envvars"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/skillscheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts"
 	"github.com/spf13/cobra"
+)
+
+// Canonical strict-mode envelope messages shared across fixtures. The
+// switch-policy hint text is asserted by substring in
+// assertStrictModeDenialEnvelope.
+const (
+	strictModeBotMessage  = `strict mode is "bot", only bot-identity commands are available`
+	strictModeUserMessage = `strict mode is "user", only user-identity commands are available`
 )
 
 // buildIntegrationRootCmd creates a root command with api, service, and shortcut
@@ -51,35 +62,44 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 	return 0
 }
 
-// parseEnvelope parses stderr bytes into an ErrorEnvelope.
-func parseEnvelope(t *testing.T, stderr *bytes.Buffer) output.ErrorEnvelope {
+// typedErrorEnvelope mirrors the typed wire shape produced by
+// WriteTypedErrorEnvelope: the inner error marshals an errs.Problem
+// directly, so "type" is the category, "subtype" is top-level, and there
+// is no nested "detail" object. Recovery info (policy source, reason
+// code, suggestions) is folded into "hint".
+type typedErrorEnvelope struct {
+	OK       bool   `json:"ok"`
+	Identity string `json:"identity,omitempty"`
+	Error    struct {
+		Type    string `json:"type"`
+		Subtype string `json:"subtype"`
+		Message string `json:"message"`
+		Hint    string `json:"hint"`
+		Param   string `json:"param,omitempty"`
+	} `json:"error"`
+}
+
+// parseTypedEnvelope decodes stderr as the typed envelope and fails if the
+// legacy nested "detail" object is present (the migration removed it).
+func parseTypedEnvelope(t *testing.T, stderr *bytes.Buffer) typedErrorEnvelope {
 	t.Helper()
 	if stderr.Len() == 0 {
 		t.Fatal("expected non-empty stderr, got empty")
 	}
-	var env output.ErrorEnvelope
+	var raw map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to parse stderr as JSON: %v\nstderr: %s", err, stderr.String())
+	}
+	if errObj, ok := raw["error"].(map[string]any); ok {
+		if _, hasDetail := errObj["detail"]; hasDetail {
+			t.Errorf("typed envelope must not carry a nested 'detail' object, got: %s", stderr.String())
+		}
+	}
+	var env typedErrorEnvelope
 	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("failed to parse stderr as ErrorEnvelope: %v\nstderr: %s", err, stderr.String())
+		t.Fatalf("failed to parse stderr as typed envelope: %v\nstderr: %s", err, stderr.String())
 	}
 	return env
-}
-
-// assertEnvelope verifies exit code, stdout is empty, and stderr matches the
-// expected ErrorEnvelope exactly via reflect.DeepEqual.
-func assertEnvelope(t *testing.T, code int, wantCode int, stdout *bytes.Buffer, stderr *bytes.Buffer, want output.ErrorEnvelope) {
-	t.Helper()
-	if code != wantCode {
-		t.Errorf("exit code: got %d, want %d", code, wantCode)
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
-	}
-	got := parseEnvelope(t, stderr)
-	if !reflect.DeepEqual(got, want) {
-		gotJSON, _ := json.MarshalIndent(got, "", "  ")
-		wantJSON, _ := json.MarshalIndent(want, "", "  ")
-		t.Errorf("stderr envelope mismatch:\ngot:\n%s\nwant:\n%s", gotJSON, wantJSON)
-	}
 }
 
 func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.Command {
@@ -135,10 +155,12 @@ func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictM
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	f := cmdutil.NewDefault(cmdutil.InvocationContext{Profile: profile})
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	f.IOStreams = &cmdutil.IOStreams{In: nil, Out: stdout, ErrOut: stderr}
+	f := cmdutil.NewDefault(
+		cmdutil.NewIOStreams(&bytes.Buffer{}, stdout, stderr),
+		cmdutil.InvocationContext{Profile: profile},
+	)
 	return f, stdout, stderr
 }
 
@@ -147,173 +169,7 @@ func resetBuffers(stdout *bytes.Buffer, stderr *bytes.Buffer) {
 	stderr.Reset()
 }
 
-func parseDryRunJSON(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
-	t.Helper()
-	out := stdout.String()
-	const prefix = "=== Dry Run ===\n"
-	if !strings.HasPrefix(out, prefix) {
-		t.Fatalf("expected dry-run prefix, got:\n%s", out)
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(out, prefix)), &payload); err != nil {
-		t.Fatalf("failed to parse dry-run payload: %v\nstdout: %s", err, out)
-	}
-	return payload
-}
-
-// --- api command ---
-
-func TestIntegration_Api_BusinessError_OutputsEnvelope(t *testing.T) {
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "e2e-api-err", AppSecret: "secret", Brand: core.BrandFeishu,
-	})
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/im/v1/messages",
-		Body: map[string]interface{}{
-			"code": 230002,
-			"msg":  "Bot/User can NOT be out of the chat.",
-			"error": map[string]interface{}{
-				"log_id": "test-log-id-001",
-			},
-		},
-	})
-
-	rootCmd := buildIntegrationRootCmd(t, f)
-	code := executeRootIntegration(t, f, rootCmd, []string{
-		"api", "--as", "bot", "POST", "/open-apis/im/v1/messages",
-		"--params", `{"receive_id_type":"chat_id"}`,
-		"--data", `{"receive_id":"oc_xxx","msg_type":"text","content":"{\"text\":\"test\"}"}`,
-	})
-
-	// api uses MarkRaw: detail preserved, no enrichment
-	assertEnvelope(t, code, output.ExitAPI, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:    "api_error",
-			Code:    230002,
-			Message: "API error: [230002] Bot/User can NOT be out of the chat.",
-			Detail: map[string]interface{}{
-				"log_id": "test-log-id-001",
-			},
-		},
-	})
-}
-
-func TestIntegration_Api_PermissionError_NotEnriched(t *testing.T) {
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "e2e-api-perm", AppSecret: "secret", Brand: core.BrandFeishu,
-	})
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/test/perm",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled for this app",
-			"error": map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "calendar:calendar:readonly"},
-				},
-				"log_id": "test-log-id-perm",
-			},
-		},
-	})
-
-	rootCmd := buildIntegrationRootCmd(t, f)
-	code := executeRootIntegration(t, f, rootCmd, []string{
-		"api", "--as", "bot", "GET", "/open-apis/test/perm",
-	})
-
-	// api uses MarkRaw: enrichment skipped, detail preserved, no console_url
-	assertEnvelope(t, code, output.ExitAPI, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:    "permission",
-			Code:    99991672,
-			Message: "Permission denied [99991672]",
-			Hint:    "check app permissions or re-authorize: lark-cli auth login",
-			Detail: map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "calendar:calendar:readonly"},
-				},
-				"log_id": "test-log-id-perm",
-			},
-		},
-	})
-}
-
 // --- service command ---
-
-func TestIntegration_Service_BusinessError_OutputsEnvelope(t *testing.T) {
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "e2e-svc-err", AppSecret: "secret", Brand: core.BrandFeishu,
-	})
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/im/v1/chats/oc_fake",
-		Body: map[string]interface{}{
-			"code": 99992356,
-			"msg":  "id not exist",
-			"error": map[string]interface{}{
-				"log_id": "test-log-id-svc",
-			},
-		},
-	})
-
-	rootCmd := buildIntegrationRootCmd(t, f)
-	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "chats", "get", "--params", `{"chat_id":"oc_fake"}`, "--as", "bot",
-	})
-
-	// service: no MarkRaw, non-permission error — detail preserved
-	assertEnvelope(t, code, output.ExitAPI, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:    "api_error",
-			Code:    99992356,
-			Message: "API error: [99992356] id not exist",
-			Detail: map[string]interface{}{
-				"log_id": "test-log-id-svc",
-			},
-		},
-	})
-}
-
-func TestIntegration_Service_PermissionError_Enriched(t *testing.T) {
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "e2e-svc-perm", AppSecret: "secret", Brand: core.BrandFeishu,
-	})
-	reg.Register(&httpmock.Stub{
-		URL: "/open-apis/im/v1/chats/oc_test",
-		Body: map[string]interface{}{
-			"code": 99991672,
-			"msg":  "scope not enabled",
-			"error": map[string]interface{}{
-				"permission_violations": []interface{}{
-					map[string]interface{}{"subject": "im:chat:readonly"},
-				},
-			},
-		},
-	})
-
-	rootCmd := buildIntegrationRootCmd(t, f)
-	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "chats", "get", "--params", `{"chat_id":"oc_test"}`, "--as", "bot",
-	})
-
-	// service: no MarkRaw — enrichment applied, detail cleared, console_url set
-	assertEnvelope(t, code, output.ExitAPI, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:       "permission",
-			Code:       99991672,
-			Message:    "App scope not enabled: required scope im:chat:readonly [99991672]",
-			Hint:       "enable the scope in developer console (see console_url)",
-			ConsoleURL: "https://open.feishu.cn/page/scope-apply?clientID=e2e-svc-perm&scopes=im%3Achat%3Areadonly",
-		},
-	})
-}
 
 func TestIntegration_StrictModeBot_ProfileOverride_HidesCommandsInHelp(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
@@ -355,13 +211,73 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectAuthLoginReturnsEnvelop
 		"auth", "login", "--json", "--scope", "im:message.send_as_user",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "strict_mode",
-			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
-		},
-	})
+	// auth login is user-only, so it gets pruned in strict-mode-bot and the
+	// stub error fires (not login.go's inline check, which is shadowed by
+	// pruning). The typed envelope is a failed_precondition validation
+	// error (exit 2); the strict-mode layer + reason code are folded into
+	// the hint.
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertStrictModeDenialEnvelope(t, env, strictModeBotMessage)
+}
+
+// assertStrictModeDenialEnvelope pins the shared strict-mode denial shape:
+// a validation/failed_precondition envelope whose message is the short
+// historical strict-mode line and whose hint still names the strict_mode
+// layer + identity_not_supported reason code (the safety-critical recovery
+// info), plus the historical switch-policy guidance.
+func assertStrictModeDenialEnvelope(t *testing.T, env typedErrorEnvelope, wantMessage string) {
+	t.Helper()
+	if env.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if env.Error.Type != "validation" {
+		t.Errorf("error.type = %q, want validation", env.Error.Type)
+	}
+	if env.Error.Subtype != "failed_precondition" {
+		t.Errorf("error.subtype = %q, want failed_precondition", env.Error.Subtype)
+	}
+	if env.Error.Message != wantMessage {
+		t.Errorf("error.message = %q, want %q", env.Error.Message, wantMessage)
+	}
+	if !strings.Contains(env.Error.Hint, "strict_mode") {
+		t.Errorf("error.hint = %q, want substring strict_mode (policy layer)", env.Error.Hint)
+	}
+	if !strings.Contains(env.Error.Hint, "identity_not_supported") {
+		t.Errorf("error.hint = %q, want substring identity_not_supported (reason code)", env.Error.Hint)
+	}
+	if !strings.Contains(env.Error.Hint, "config strict-mode --help") {
+		t.Errorf("error.hint = %q, want historical switch-policy guidance", env.Error.Hint)
+	}
+}
+
+// assertCheckStrictModeEnvelope pins the typed envelope produced by
+// cmdutil.Factory.CheckStrictMode (the identity-guard path for explicit
+// --as on shortcuts / service methods / api): a *errs.ValidationError with
+// subtype invalid_argument, the canonical strict-mode message, and the
+// switch-policy hint.
+func assertCheckStrictModeEnvelope(t *testing.T, env typedErrorEnvelope, wantMessage string) {
+	t.Helper()
+	if env.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if env.Error.Type != "validation" {
+		t.Errorf("error.type = %q, want validation", env.Error.Type)
+	}
+	if env.Error.Subtype != "invalid_argument" {
+		t.Errorf("error.subtype = %q, want invalid_argument", env.Error.Subtype)
+	}
+	if env.Error.Message != wantMessage {
+		t.Errorf("error.message = %q, want %q", env.Error.Message, wantMessage)
+	}
+	if !strings.Contains(env.Error.Hint, "config strict-mode --help") {
+		t.Errorf("error.hint = %q, want switch-policy guidance", env.Error.Hint)
+	}
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnvelope(t *testing.T) {
@@ -372,13 +288,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnve
 		"im", "+messages-search", "--chat-id", "oc_xxx", "--query", "hello",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "strict_mode",
-			Message: `strict mode is "bot", only bot identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertStrictModeDenialEnvelope(t, env, strictModeBotMessage)
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *testing.T) {
@@ -400,7 +317,25 @@ func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *
 	}
 }
 
-func TestIntegration_StrictModeBot_ProfileOverride_ServiceDryRunForcesBotIdentity(t *testing.T) {
+func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEnvelope(t *testing.T) {
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
+	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+
+	code := executeRootIntegration(t, f, rootCmd, []string{
+		"im", "+chat-create", "--name", "probe", "--as", "bot", "--dry-run",
+	})
+
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertCheckStrictModeEnvelope(t, env, strictModeUserMessage)
+}
+
+func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
@@ -408,16 +343,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceDryRunForcesBotIdentit
 		"im", "chats", "get", "--params", `{"chat_id":"oc_test"}`, "--as", "user", "--dry-run",
 	})
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
 	}
-	payload := parseDryRunJSON(t, stdout)
-	if got := payload["as"]; got != "bot" {
-		t.Fatalf("dry-run as = %v, want bot", got)
-	}
+	env := parseTypedEnvelope(t, stderr)
+	assertCheckStrictModeEnvelope(t, env, strictModeBotMessage)
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsEnvelope(t *testing.T) {
@@ -428,16 +361,17 @@ func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsE
 		"im", "images", "create", "--data", `{"image_type":"message","image":"x"}`, "--dry-run",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "strict_mode",
-			Message: `strict mode is "user", only user identity is allowed. This setting is managed by the administrator and must not be modified by AI agents.`,
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertStrictModeDenialEnvelope(t, env, strictModeUserMessage)
 }
 
-func TestIntegration_StrictModeBot_ProfileOverride_APIDryRunForcesBotIdentity(t *testing.T) {
+func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
 	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
@@ -445,16 +379,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_APIDryRunForcesBotIdentity(t 
 		"api", "--as", "user", "GET", "/open-apis/im/v1/chats/oc_test", "--dry-run",
 	})
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
 	}
-	payload := parseDryRunJSON(t, stdout)
-	if got := payload["as"]; got != "bot" {
-		t.Fatalf("dry-run as = %v, want bot", got)
-	}
+	env := parseTypedEnvelope(t, stderr)
+	assertCheckStrictModeEnvelope(t, env, strictModeBotMessage)
 }
 
 // --- shortcut command ---
@@ -477,14 +409,228 @@ func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
 		"im", "+messages-send", "--as", "bot", "--chat-id", "oc_xxx", "--text", "test",
 	})
 
-	// shortcut: no MarkRaw, no HandleResponse — error via DoAPIJSON path
-	assertEnvelope(t, code, output.ExitAPI, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:    "api_error",
-			Code:    230002,
-			Message: "HTTP 400: Bot/User can NOT be out of the chat.",
-		},
+	// shortcut: typed errs.APIError via the CallAPITyped → BuildAPIError path.
+	if code != output.ExitAPI {
+		t.Errorf("exit code = %d, want %d (ExitAPI)", code, output.ExitAPI)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	if stderr.Len() == 0 {
+		t.Fatal("expected non-empty stderr, got empty")
+	}
+	var raw struct {
+		OK       bool   `json:"ok"`
+		Identity string `json:"identity"`
+		Error    struct {
+			Type    string `json:"type"`
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to parse typed envelope: %v\nstderr: %s", err, stderr.String())
+	}
+	if raw.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if raw.Identity != "bot" {
+		t.Errorf("identity = %q, want bot", raw.Identity)
+	}
+	if raw.Error.Type != "api" {
+		t.Errorf("error.type = %q, want api", raw.Error.Type)
+	}
+	if raw.Error.Code != 230002 {
+		t.Errorf("error.code = %d, want 230002", raw.Error.Code)
+	}
+	if raw.Error.Message != "Bot/User can NOT be out of the chat." {
+		t.Errorf("error.message = %q, want %q", raw.Error.Message, "Bot/User can NOT be out of the chat.")
+	}
+}
+
+// TestSetupNotices_ColdStart_NoNotice verifies that missing state
+// produces no skills key in the composed notice.
+func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
+	clearNoticeEnv(t)
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	origVersion := build.Version
+	build.Version = "1.0.21"
+	t.Cleanup(func() { build.Version = origVersion })
+
+	// Reset pending state to ensure a clean test.
+	skillscheck.SetPending(nil)
+	update.SetPending(nil)
+	output.PendingNotice = nil
+	t.Cleanup(func() {
+		skillscheck.SetPending(nil)
+		update.SetPending(nil)
+		output.PendingNotice = nil
 	})
+
+	setupNotices()
+
+	notice := output.GetNotice()
+	if notice == nil {
+		return // expected — no pending notices at all
+	}
+	if _, ok := notice["skills"]; ok {
+		t.Errorf("notice.skills present in cold-start state, want absent: %+v", notice)
+	}
+}
+
+// TestSetupNotices_InSync verifies that matching state produces no
+// skills key in the composed notice.
+func TestSetupNotices_InSync(t *testing.T) {
+	clearNoticeEnv(t)
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {
+		t.Fatal(err)
+	}
+
+	origVersion := build.Version
+	build.Version = "1.0.21"
+	t.Cleanup(func() { build.Version = origVersion })
+
+	skillscheck.SetPending(nil)
+	update.SetPending(nil)
+	output.PendingNotice = nil
+	t.Cleanup(func() {
+		skillscheck.SetPending(nil)
+		update.SetPending(nil)
+		output.PendingNotice = nil
+	})
+
+	setupNotices()
+
+	notice := output.GetNotice()
+	if notice != nil {
+		if _, ok := notice["skills"]; ok {
+			t.Errorf("notice.skills present in in-sync state: %+v", notice)
+		}
+	}
+}
+
+// TestSetupNotices_Drift verifies mismatching state produces the
+// drift message with both current and target populated.
+func TestSetupNotices_Drift(t *testing.T) {
+	clearNoticeEnv(t)
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.20"}); err != nil {
+		t.Fatal(err)
+	}
+
+	origVersion := build.Version
+	build.Version = "1.0.21"
+	t.Cleanup(func() { build.Version = origVersion })
+
+	skillscheck.SetPending(nil)
+	update.SetPending(nil)
+	output.PendingNotice = nil
+	t.Cleanup(func() {
+		skillscheck.SetPending(nil)
+		update.SetPending(nil)
+		output.PendingNotice = nil
+	})
+
+	setupNotices()
+
+	notice := output.GetNotice()
+	if notice == nil {
+		t.Fatal("GetNotice() = nil, want non-nil for drift")
+	}
+	skills, ok := notice["skills"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("notice.skills missing, got %+v", notice)
+	}
+	if skills["current"] != "1.0.20" || skills["target"] != "1.0.21" {
+		t.Errorf("notice.skills = %+v, want {current:\"1.0.20\", target:\"1.0.21\"}", skills)
+	}
+	want := "lark-cli skills 1.0.20 out of sync with binary 1.0.21, run: lark-cli update"
+	if msg, _ := skills["message"].(string); msg != want {
+		t.Errorf("notice.skills.message = %q, want %q", msg, want)
+	}
+	if cmd, _ := skills["command"].(string); cmd != "lark-cli update" {
+		t.Errorf("notice.skills.command = %q, want %q", cmd, "lark-cli update")
+	}
+}
+
+// TestSetupNotices_BothUpdateAndSkills verifies the composed envelope
+// emits BOTH "_notice.update" and "_notice.skills" keys when each
+// pending value is set. Drives the skills key via setupNotices() (drift
+// state) and manually populates the update pending afterwards, since
+// clearNoticeEnv suppresses the update goroutine to avoid network
+// flakiness.
+func TestSetupNotices_BothUpdateAndSkills(t *testing.T) {
+	clearNoticeEnv(t)
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.20"}); err != nil {
+		t.Fatal(err)
+	}
+
+	origVersion := build.Version
+	build.Version = "1.0.21"
+	t.Cleanup(func() { build.Version = origVersion })
+
+	skillscheck.SetPending(nil)
+	update.SetPending(nil)
+	output.PendingNotice = nil
+	t.Cleanup(func() {
+		skillscheck.SetPending(nil)
+		update.SetPending(nil)
+		output.PendingNotice = nil
+	})
+
+	setupNotices()
+
+	// After setupNotices, skills pending is set (drift). Manually populate
+	// the update side so the composed envelope has both keys — the update
+	// goroutine is suppressed by clearNoticeEnv.
+	update.SetPending(&update.UpdateInfo{Current: "1.0.21", Latest: "1.0.22"})
+
+	notice := output.GetNotice()
+	if notice == nil {
+		t.Fatal("GetNotice() = nil, want both keys")
+	}
+	if _, ok := notice["update"].(map[string]interface{}); !ok {
+		t.Errorf("missing 'update' key: %+v", notice)
+	}
+	if _, ok := notice["skills"].(map[string]interface{}); !ok {
+		t.Errorf("missing 'skills' key: %+v", notice)
+	}
+	upd, ok := notice["update"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("notice.update missing or wrong type: %+v", notice)
+	}
+	if cmd, _ := upd["command"].(string); cmd != "lark-cli update" {
+		t.Errorf("notice.update.command = %q, want %q", cmd, "lark-cli update")
+	}
+	sk, ok := notice["skills"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("notice.skills missing or wrong type: %+v", notice)
+	}
+	if cmd, _ := sk["command"].(string); cmd != "lark-cli update" {
+		t.Errorf("notice.skills.command = %q, want %q", cmd, "lark-cli update")
+	}
+}
+
+// clearNoticeEnv unsets the env vars that affect either notice. We
+// proactively SUPPRESS the update notifier (LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1)
+// because setupNotices spawns a goroutine that hits the npm registry —
+// tests focused on the skills check should not depend on network state.
+func clearNoticeEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER",
+		"CI", "BUILD_NUMBER", "RUN_ID",
+	} {
+		t.Setenv(key, "")
+		os.Unsetenv(key)
+	}
+	// Suppress the update goroutine's network call deterministically.
+	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
 }

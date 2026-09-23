@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/httpmock"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 func TestValidateDriveCreateFolderSpecRejectsInvalidInputs(t *testing.T) {
@@ -229,6 +229,72 @@ func TestDriveCreateFolderUsesRootWhenParentIsOmitted(t *testing.T) {
 	}
 	if _, ok := data["permission_grant"]; ok {
 		t.Fatalf("did not expect permission_grant in user mode output: %#v", data)
+	}
+}
+
+func TestDriveCreateFolderFallbackURLWhenBackendOmitsIt(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, ""))
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"token": "fld_created",
+				// "url" deliberately omitted to exercise the fallback.
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveCreateFolder, []string{
+		"+create-folder",
+		"--name", "Weekly Reports",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/drive/folder/fld_created"; got != want {
+		t.Fatalf("url = %#v, want %q (brand-standard fallback)", got, want)
+	}
+}
+
+func TestDriveCreateFolderFallbackURLWhenBackendURLIsWhitespace(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, drivePermissionGrantTestConfig(t, ""))
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"token": "fld_created",
+				"url":   "   ", // whitespace-only must trigger fallback, not pass through.
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveCreateFolder, []string{
+		"+create-folder",
+		"--name", "Weekly Reports",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/drive/folder/fld_created"; got != want {
+		t.Fatalf("url = %#v, want %q (whitespace-only backend URL must yield fallback)", got, want)
 	}
 }
 

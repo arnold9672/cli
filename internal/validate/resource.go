@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/charcheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/charcheck"
 )
 
 // unsafeResourceChars matches URL-special characters, control characters,

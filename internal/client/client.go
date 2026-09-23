@@ -18,10 +18,12 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/core"
+	"code.byted.org/lark_search/larksuite-cli/internal/credential"
+	"code.byted.org/lark_search/larksuite-cli/internal/errclass"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/util"
 )
 
 // RawApiRequest describes a raw API request.
@@ -48,14 +50,31 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (s
 	if err != nil {
 		var unavailableErr *credential.TokenUnavailableError
 		if errors.As(err, &unavailableErr) {
-			return "", output.ErrAuth("no access token available for %s", as)
+			return "", newTokenMissingError(as, unavailableErr)
 		}
+		// The credential chain already emits a typed *errs.AuthenticationError
+		// for the missing-UAT case (e.g. UAT refresh returned
+		// need_user_authorization), so it flows through unchanged: the
+		// outer-typed gate in cmd/root.go and the idempotent WrapDoAPIError
+		// both preserve its authentication category and exit 3.
 		return "", err
 	}
 	if result.Token == "" {
-		return "", output.ErrAuth("no access token available for %s", as)
+		return "", newTokenMissingError(as, nil)
 	}
 	return result.Token, nil
+}
+
+// newTokenMissingError builds the typed *errs.AuthenticationError that
+// resolveAccessToken returns when no usable token is available for the
+// requested identity. cause is the underlying credential-chain error (or nil
+// for the defensive empty-token branch) and is preserved for errors.Is /
+// errors.Unwrap traversal without being serialized on the wire.
+func newTokenMissingError(as core.Identity, cause error) error {
+	return errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+		"no access token available for %s", as).
+		WithHint("run: lark-cli auth login to re-authorize").
+		WithCause(cause)
 }
 
 // buildApiReq converts a RawApiRequest into SDK types and collects
@@ -91,12 +110,26 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 // DoSDKRequest resolves auth for the given identity and executes a pre-built SDK request.
 // This is the shared auth+execute path used by both DoAPI (generic API calls via RawApiRequest)
 // and shortcut RuntimeContext.DoAPI (direct larkcore.ApiReq calls).
+//
+// SDK Do() failures are normalised through WrapDoAPIError so every caller
+// (cmd/api, RuntimeContext, shortcuts) gets the same wire shape without
+// each one remembering to wrap. WrapDoAPIError classifies a raw transport
+// failure into a typed *errs.NetworkError / *errs.InternalError per the
+// contract in errs/ERROR_CONTRACT.md. Errors that arrive already-classified
+// (a typed *errs.* from resolveAccessToken's missing-credential paths or
+// elsewhere) flow through unchanged.
 func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	var opts []larkcore.RequestOptionFunc
 
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
-		return nil, err
+		// WrapDoAPIError is idempotent on already-classified errors:
+		// the typed *errs.AuthenticationError that resolveAccessToken returns
+		// for missing tokens passes through with its auth category and exit 3
+		// intact, and any other typed *errs.* error from the credential chain
+		// survives the same way. Only stray untyped errors (raw fmt.Errorf)
+		// get the transport-or-internal fallback.
+		return nil, WrapDoAPIError(err)
 	}
 	if as.IsBot() {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
@@ -107,7 +140,11 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 	}
 
 	opts = append(opts, extraOpts...)
-	return c.SDK.Do(ctx, req, opts...)
+	resp, err := c.SDK.Do(ctx, req, opts...)
+	if err != nil {
+		return nil, WrapDoAPIError(err)
+	}
+	return resp, nil
 }
 
 // DoStream executes a streaming HTTP request against the Lark OpenAPI endpoint.
@@ -116,14 +153,17 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 // Auth is resolved via Credential (same as DoSDKRequest). Security headers and
 // any extra headers from opts are applied automatically.
 // HTTP errors (status >= 400) are handled internally: the body is read (up to 4 KB),
-// closed, and returned as an output.ErrNetwork — callers only receive successful responses.
+// closed, and returned as a typed *errs.NetworkError — callers only receive successful responses.
 func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.Identity, opts ...Option) (*http.Response, error) {
 	cfg := buildConfig(opts)
 
 	// Resolve auth
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
-		return nil, err
+		// See DoSDKRequest comment on the same wrap pattern; the typed
+		// auth-error pass-through plus untyped fallback applies equally to
+		// streaming requests.
+		return nil, WrapDoAPIError(err)
 	}
 
 	// Build URL
@@ -154,7 +194,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	httpReq, err := http.NewRequestWithContext(requestCtx, req.HttpMethod, requestURL, bodyReader)
 	if err != nil {
 		cancel()
-		return nil, output.ErrNetwork("stream request failed: %s", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "stream request failed: %s", err).WithCause(err)
 	}
 
 	// Apply headers from opts
@@ -172,7 +212,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		cancel()
-		return nil, output.ErrNetwork("stream request failed: %s", err)
+		return nil, errs.NewNetworkError(classifyNetworkSubtype(err), "stream request failed: %s", err).WithCause(err)
 	}
 	resp.Body = &cancelOnCloseBody{ReadCloser: resp.Body, cancel: cancel}
 
@@ -181,13 +221,32 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 		defer resp.Body.Close()
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		msg := strings.TrimSpace(string(errBody))
-		if msg != "" {
-			return nil, output.ErrNetwork("HTTP %d: %s", resp.StatusCode, msg)
+		subtype := errs.SubtypeNetworkTransport
+		if resp.StatusCode >= 500 {
+			subtype = errs.SubtypeNetworkServer
 		}
-		return nil, output.ErrNetwork("HTTP %d", resp.StatusCode)
+		var netErr *errs.NetworkError
+		if msg != "" {
+			netErr = errs.NewNetworkError(subtype, "HTTP %d: %s", resp.StatusCode, msg)
+		} else {
+			netErr = errs.NewNetworkError(subtype, "HTTP %d", resp.StatusCode)
+		}
+		netErr = netErr.WithCode(resp.StatusCode)
+		if logID := streamLogID(resp.Header); logID != "" {
+			netErr = netErr.WithLogID(logID)
+		}
+		return nil, netErr
 	}
 
 	return resp, nil
+}
+
+func streamLogID(header http.Header) string {
+	logID := strings.TrimSpace(header.Get(larkcore.HttpHeaderKeyLogId))
+	if logID == "" {
+		logID = strings.TrimSpace(header.Get(larkcore.HttpHeaderKeyRequestId))
+	}
+	return logID
 }
 
 type cancelOnCloseBody struct {
@@ -215,10 +274,10 @@ func buildStreamURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) 
 			pathKey := strings.TrimPrefix(segment, ":")
 			pathValue, ok := req.PathParams[pathKey]
 			if !ok {
-				return "", output.ErrValidation("missing path param %q for %s", pathKey, req.ApiPath)
+				return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "missing path param %q for %s", pathKey, req.ApiPath).WithParam(pathKey)
 			}
 			if pathValue == "" {
-				return "", output.ErrValidation("empty path param %q for %s", pathKey, req.ApiPath)
+				return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "empty path param %q for %s", pathKey, req.ApiPath).WithParam(pathKey)
 			}
 			pathSegs = append(pathSegs, url.PathEscape(pathValue))
 		}
@@ -244,7 +303,7 @@ func buildStreamBody(body interface{}) (io.Reader, string, error) {
 	default:
 		payload, err := json.Marshal(typed)
 		if err != nil {
-			return nil, "", output.Errorf(output.ExitInternal, "api_error", "failed to encode request body: %s", err)
+			return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "failed to encode request body: %s", err).WithCause(err)
 		}
 		return bytes.NewReader(payload), "application/json", nil
 	}
@@ -259,19 +318,30 @@ func (c *APIClient) DoAPI(ctx context.Context, request RawApiRequest) (*larkcore
 	return c.DoSDKRequest(ctx, apiReq, request.As, extraOpts...)
 }
 
-// CallAPI is a convenience wrapper: DoAPI + ParseJSONResponse.
-// Use DoAPI directly when the response may not be JSON (e.g. file downloads).
+// CallAPI is a convenience wrapper: DoAPI + ParseJSONResponse. Use DoAPI
+// directly when the response may not be JSON (e.g. file downloads).
+//
+// JSON parse failures are wrapped via WrapJSONResponseParseError so callers
+// (notably the pagination loop and --page-all paths in cmd/api / cmd/service)
+// see a typed *errs.InternalError (invalid_response) instead of a bare
+// fmt.Errorf — otherwise an empty or malformed page body would surface to the
+// root handler as a plain-text "Error: ..." line and bypass the JSON stderr
+// envelope contract.
 func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interface{}, error) {
 	resp, err := c.DoAPI(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	return ParseJSONResponse(resp)
+	result, parseErr := ParseJSONResponse(resp)
+	if parseErr != nil {
+		return nil, WrapJSONResponseParseError(parseErr, resp.RawBody)
+	}
+	return result, nil
 }
 
 // paginateLoop runs the core pagination loop. For each successful page (code == 0),
 // it calls onResult if non-nil. It always accumulates and returns all raw page results.
-func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opts PaginationOptions, onResult func(interface{})) ([]interface{}, error) {
+func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opts PaginationOptions, onResult func(interface{}) error) ([]interface{}, error) {
 	var allResults []interface{}
 	var pageToken string
 	page := 0
@@ -320,7 +390,9 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 		}
 
 		if onResult != nil {
-			onResult(result)
+			if err := onResult(result); err != nil {
+				return allResults, err
+			}
 		}
 		allResults = append(allResults, result)
 
@@ -373,28 +445,31 @@ func (c *APIClient) PaginateAll(ctx context.Context, request RawApiRequest, opts
 // StreamPages fetches all pages and streams each page's list items via onItems.
 // Returns the last page result (for error checking), whether any list items were found,
 // and any network error. Use this for streaming formats (ndjson, table, csv).
-func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onItems func([]interface{}), opts PaginationOptions) (result interface{}, hasItems bool, err error) {
+func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onItems func([]interface{}) error, opts PaginationOptions) (result interface{}, hasItems bool, err error) {
 	totalItems := 0
-	results, loopErr := c.paginateLoop(ctx, request, opts, func(r interface{}) {
+	results, loopErr := c.paginateLoop(ctx, request, opts, func(r interface{}) error {
 		resultMap, ok := r.(map[string]interface{})
 		if !ok {
-			return
+			return nil
 		}
 		data, ok := resultMap["data"].(map[string]interface{})
 		if !ok {
-			return
+			return nil
 		}
 		arrayField := output.FindArrayField(data)
 		if arrayField == "" {
-			return
+			return nil
 		}
 		items, ok := data[arrayField].([]interface{})
 		if !ok {
-			return
+			return nil
 		}
 		totalItems += len(items)
-		onItems(items)
+		if err := onItems(items); err != nil {
+			return err
+		}
 		hasItems = true
+		return nil
 	})
 	if loopErr != nil {
 		return nil, false, loopErr
@@ -410,19 +485,23 @@ func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onIt
 	return map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{}}, false, nil
 }
 
-// CheckLarkResponse inspects a Lark API response for business-level errors (non-zero code).
-// Uses type assertion instead of interface{} == nil to satisfy interface_nil_check lint.
-// Returns nil if result is not a map, map is nil, or code is 0.
-func CheckLarkResponse(result interface{}) error {
+// CheckResponse inspects a Lark API response for business-level errors (non-zero code)
+// and routes the result through errclass.BuildAPIError so the wire envelope carries
+// the canonical Category/Subtype + identity-aware extension fields (MissingScopes,
+// ConsoleURL, etc.) for known Lark codes; unknown codes still surface as
+// *errs.APIError{Subtype: unknown}.
+func (c *APIClient) CheckResponse(result interface{}, identity core.Identity) error {
 	resultMap, ok := result.(map[string]interface{})
 	if !ok || resultMap == nil {
 		return nil
 	}
-	code, _ := util.ToFloat64(resultMap["code"])
-	if code == 0 {
+	if code, _ := util.ToFloat64(resultMap["code"]); code == 0 {
 		return nil
 	}
-	larkCode := int(code)
-	msg, _ := resultMap["msg"].(string)
-	return output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] %s", larkCode, msg), resultMap["error"])
+	cc := errclass.ClassifyContext{Identity: string(identity)}
+	if c != nil && c.Config != nil {
+		cc.Brand = string(c.Config.Brand)
+		cc.AppID = c.Config.AppID
+	}
+	return errclass.BuildAPIError(resultMap, cc)
 }

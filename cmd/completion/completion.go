@@ -4,9 +4,8 @@
 package completion
 
 import (
-	"fmt"
-
-	"github.com/larksuite/cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -32,10 +31,13 @@ func NewCmdCompletion(f *cmdutil.Factory) *cobra.Command {
 			case "powershell":
 				return root.GenPowerShellCompletionWithDesc(out)
 			default:
-				return fmt.Errorf("unsupported shell: %s", args[0])
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"unsupported shell: %s", args[0]).
+					WithHint("supported shells: bash, zsh, fish, powershell")
 			}
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
+	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }

@@ -7,16 +7,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/extension/fileio"
+	"code.byted.org/lark_search/larksuite-cli/internal/client"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -31,7 +32,7 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "file-key", Desc: "resource key (img_xxx or file_xxx)", Required: true},
 		{Name: "type", Desc: "resource type (image or file)", Required: true, Enum: []string{"image", "file"}},
-		{Name: "output", Desc: "local save path (relative only, no .. traversal; defaults to file_key)"},
+		{Name: "output", Desc: "local save path (relative only, no .. traversal); when omitted, uses the server's Content-Disposition filename if available, otherwise file_key; extension is inferred from Content-Disposition or Content-Type if not provided"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		fileKey := runtime.Str("file-key")
@@ -47,16 +48,16 @@ var ImMessagesResourcesDownload = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if messageId := runtime.Str("message-id"); messageId == "" {
-			return output.ErrValidation("--message-id is required (om_xxx)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-id is required (om_xxx)").WithParam("--message-id")
 		} else if _, err := validateMessageID(messageId); err != nil {
 			return err
 		}
 		relPath, err := normalizeDownloadOutputPath(runtime.Str("file-key"), runtime.Str("output"))
 		if err != nil {
-			return output.ErrValidation("%s", err)
+			return err
 		}
 		if _, err := runtime.ResolveSavePath(relPath); err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
 		return nil
 	},
@@ -66,13 +67,16 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		fileType := runtime.Str("type")
 		relPath, err := normalizeDownloadOutputPath(fileKey, runtime.Str("output"))
 		if err != nil {
-			return output.ErrValidation("invalid output path: %s", err)
+			return err
 		}
 		if _, err := runtime.ResolveSavePath(relPath); err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
 
-		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath)
+		// With an explicit --output, keep that basename (append only an
+		// extension); without it, adopt the server's original filename.
+		preserveBasename := runtime.Str("output") != ""
+		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath, preserveBasename)
 		if err != nil {
 			return err
 		}
@@ -85,23 +89,23 @@ var ImMessagesResourcesDownload = common.Shortcut{
 func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 	fileKey = strings.TrimSpace(fileKey)
 	if fileKey == "" {
-		return "", fmt.Errorf("file-key cannot be empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "file-key cannot be empty").WithParam("--file-key")
 	}
 	if strings.ContainsAny(fileKey, "/\\") {
-		return "", fmt.Errorf("file-key cannot contain path separators")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "file-key cannot contain path separators").WithParam("--file-key")
 	}
 	if outputPath == "" {
 		return fileKey, nil
 	}
 	outputPath = filepath.Clean(strings.TrimSpace(outputPath))
 	if outputPath == "." {
-		return "", fmt.Errorf("path cannot be empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "path cannot be empty").WithParam("--output")
 	}
 	if filepath.IsAbs(outputPath) {
-		return "", fmt.Errorf("absolute paths are not allowed")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "absolute paths are not allowed").WithParam("--output")
 	}
 	if outputPath == ".." || strings.HasPrefix(outputPath, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path cannot escape the current working directory")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "path cannot escape the current working directory").WithParam("--output")
 	}
 	return outputPath, nil
 }
@@ -190,7 +194,7 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 						return 0, closeErr
 					}
 				}
-				return 0, output.ErrNetwork("chunk overflow: delivered %d, expected %d", r.delivered, r.totalSize)
+				return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "chunk overflow: delivered %d, expected %d", r.delivered, r.totalSize)
 			}
 
 			switch err {
@@ -220,7 +224,7 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 			if r.delivered == r.totalSize {
 				return 0, io.EOF
 			}
-			return 0, output.ErrNetwork("file size mismatch: expected %d, got %d", r.totalSize, r.delivered)
+			return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "file size mismatch: expected %d, got %d", r.totalSize, r.delivered)
 		}
 
 		end := min(r.nextOffset+normalChunkSize-1, r.totalSize-1)
@@ -236,7 +240,7 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 		}
 		if resp.StatusCode != http.StatusPartialContent {
 			resp.Body.Close()
-			return 0, output.ErrNetwork("unexpected status code: %d", resp.StatusCode)
+			return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "unexpected status code: %d", resp.StatusCode)
 		}
 
 		r.current = resp.Body
@@ -262,10 +266,13 @@ func initialIMResourceDownloadHeaders(fileType string) map[string]string {
 	}
 }
 
-func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string) (string, int64, error) {
+func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string, preserveBasename bool) (string, int64, error) {
 	downloadResp, err := doIMResourceDownloadRequest(ctx, runtime, messageID, fileKey, fileType, initialIMResourceDownloadHeaders(fileType))
 	if err != nil {
 		return "", 0, err
+	}
+	if downloadResp == nil {
+		return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: empty response")
 	}
 
 	if downloadResp.StatusCode >= 400 {
@@ -273,7 +280,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		return "", 0, downloadResponseError(downloadResp)
 	}
 
-	finalPath := resolveIMResourceDownloadPath(outputPath, downloadResp.Header.Get("Content-Type"))
+	finalPath := resolveIMResourceDownloadPath(outputPath, downloadResp.Header.Get("Content-Type"), downloadResp.Header.Get("Content-Disposition"), preserveBasename)
 
 	var (
 		body      io.ReadCloser
@@ -284,7 +291,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		totalSize, err := parseTotalSize(downloadResp.Header.Get("Content-Range"))
 		if err != nil {
 			downloadResp.Body.Close()
-			return "", 0, output.ErrNetwork("invalid Content-Range header on range response: %s", err)
+			return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid Content-Range header on range response: %s", err)
 		}
 		body = newRangeChunkReader(ctx, runtime, messageID, fileKey, fileType, downloadResp.Body, totalSize)
 		sizeBytes = totalSize
@@ -295,7 +302,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 
 	default:
 		downloadResp.Body.Close()
-		return "", 0, output.ErrNetwork("unexpected status code: %d", downloadResp.StatusCode)
+		return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "unexpected status code: %d", downloadResp.StatusCode)
 	}
 	defer body.Close()
 
@@ -304,10 +311,10 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		ContentLength: sizeBytes,
 	}, body)
 	if err != nil {
-		return "", 0, common.WrapSaveErrorByCategory(err, "api_error")
+		return "", 0, common.WrapSaveErrorTyped(err)
 	}
 	if sizeBytes >= 0 && result.Size() != sizeBytes {
-		return "", 0, output.ErrNetwork("file size mismatch: expected %d, got %d", sizeBytes, result.Size())
+		return "", 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "file size mismatch: expected %d, got %d", sizeBytes, result.Size())
 	}
 	savedPath, resolveErr := runtime.ResolveSavePath(finalPath)
 	if resolveErr != nil || savedPath == "" {
@@ -316,16 +323,73 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 	return savedPath, result.Size(), nil
 }
 
-func resolveIMResourceDownloadPath(safePath, contentType string) string {
+// resolveIMResourceDownloadPath decides the on-disk path for a downloaded
+// resource. preserveBasename controls how a server-provided
+// Content-Disposition filename is used when safePath has no extension:
+//   - false: adopt the server's original filename (replace the basename) — the
+//     friendly single-file behavior for an explicit `+messages-resources-download`
+//     with no --output.
+//   - true: keep safePath's basename and only borrow the extension. Used both
+//     when the user pinned --output and for batch --download-resources, where
+//     safePath is keyed by the unique (file_key) and the basename MUST stay
+//     unique — otherwise two resources whose servers return the same
+//     Content-Disposition filename (e.g. download.bin) would resolve to the
+//     same path and clobber each other concurrently.
+func resolveIMResourceDownloadPath(safePath, contentType, contentDisposition string, preserveBasename bool) string {
 	if filepath.Ext(safePath) != "" {
 		return safePath
 	}
-	mimeType := strings.Split(contentType, ";")[0]
-	mimeType = strings.TrimSpace(mimeType)
+	if cdFilename := parseContentDispositionFilename(contentDisposition); cdFilename != "" {
+		if !preserveBasename {
+			// Adopt the server's original filename.
+			dir := filepath.Dir(safePath)
+			if dir == "." {
+				return cdFilename
+			}
+			return filepath.Join(dir, cdFilename)
+		}
+		// Keep the basename; only append the extension from the CD filename.
+		if ext := filepath.Ext(cdFilename); ext != "" {
+			return safePath + ext
+		}
+	}
+	mimeType := strings.TrimSpace(strings.Split(contentType, ";")[0])
 	if ext, ok := imMimeToExt[mimeType]; ok {
 		return safePath + ext
 	}
 	return safePath
+}
+
+// parseContentDispositionFilename extracts and sanitizes the filename from a
+// Content-Disposition header. It handles RFC 5987 encoded filenames (filename*)
+// with priority over plain filename via the standard mime package.
+// Returns an empty string if no valid filename can be extracted.
+func parseContentDispositionFilename(header string) string {
+	if header == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(header)
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(params["filename"])
+	if name == "" {
+		return ""
+	}
+	// Strip any path component (Unix or Windows style) to prevent path traversal.
+	if i := strings.LastIndexAny(name, "/\\"); i >= 0 {
+		name = name[i+1:]
+	}
+	if name == "" || name == "." || name == ".." {
+		return ""
+	}
+	// Reject control characters (including null bytes).
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+	return name
 }
 
 func doIMResourceDownloadRequest(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType string, headers map[string]string) (*http.Response, error) {
@@ -354,7 +418,7 @@ func doIMResourceDownloadRequest(ctx context.Context, runtime *common.RuntimeCon
 			return resp, nil
 		}
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, imContextError(ctx.Err())
 		}
 		lastErr = err
 		if attempt == imDownloadRequestRetries {
@@ -365,7 +429,7 @@ func doIMResourceDownloadRequest(ctx context.Context, runtime *common.RuntimeCon
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, output.ErrNetwork("download request failed")
+	return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download request failed")
 }
 
 func sleepIMDownloadRetry(ctx context.Context, attempt int) {
@@ -381,37 +445,37 @@ func sleepIMDownloadRetry(ctx context.Context, attempt int) {
 func downloadResponseError(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if len(body) > 0 {
-		return output.ErrNetwork("download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return output.ErrNetwork("download failed: HTTP %d", resp.StatusCode)
+	return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d", resp.StatusCode)
 }
 
 func parseTotalSize(contentRange string) (int64, error) {
 	contentRange = strings.TrimSpace(contentRange)
 	if contentRange == "" {
-		return 0, fmt.Errorf("content-range is empty")
+		return 0, fmt.Errorf("content-range is empty") //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	if !strings.HasPrefix(contentRange, "bytes ") {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange)
+		return 0, fmt.Errorf("unsupported content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 
 	parts := strings.SplitN(strings.TrimPrefix(contentRange, "bytes "), "/", 2)
 	if len(parts) != 2 || parts[1] == "" {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange)
+		return 0, fmt.Errorf("unsupported content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	if parts[0] == "*" {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange)
+		return 0, fmt.Errorf("unsupported content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	if parts[1] == "*" {
-		return 0, fmt.Errorf("unknown total size in content-range: %q", contentRange)
+		return 0, fmt.Errorf("unknown total size in content-range: %q", contentRange) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 
 	totalSize, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("parse total size: %w", err)
+		return 0, fmt.Errorf("parse total size: %w", err) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	if totalSize <= 0 {
-		return 0, fmt.Errorf("invalid total size: %d", totalSize)
+		return 0, fmt.Errorf("invalid total size: %d", totalSize) //nolint:forbidigo // intermediate Content-Range parse; caller wraps it as a typed network error
 	}
 	return totalSize, nil
 }

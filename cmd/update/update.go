@@ -10,17 +10,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/build"
-	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/selfupdate"
-	"github.com/larksuite/cli/internal/update"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/internal/build"
+	"code.byted.org/lark_search/larksuite-cli/internal/cmdutil"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/internal/selfupdate"
+	"code.byted.org/lark_search/larksuite-cli/internal/skillscheck"
+	"code.byted.org/lark_search/larksuite-cli/internal/update"
 )
 
 const (
-	repoURL      = "https://github.com/larksuite/cli"
-	maxNpmOutput = 2000
-	osWindows    = "windows"
+	repoURL         = "https://github.com/larksuite/cli"
+	maxNpmOutput    = 2000
+	maxStderrDetail = 500
+	osWindows       = "windows"
 )
 
 // Overridable for testing.
@@ -29,9 +32,36 @@ var (
 	currentVersion = func() string { return build.Version }
 	currentOS      = runtime.GOOS
 	newUpdater     = func() *selfupdate.Updater { return selfupdate.New() }
+	syncSkills     = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult { return skillscheck.SyncSkills(opts) }
 )
 
 func isWindows() bool { return currentOS == osWindows }
+
+// normalizeVersion canonicalizes a version string for state comparison.
+// Strips a leading "v" so versions written from Makefile (git describe →
+// "v1.0.0") and npm (no prefix → "1.0.0") compare equal.
+func normalizeVersion(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "v")
+	return strings.TrimPrefix(s, "V")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func shortRevision(rev string) string {
+	rev = strings.TrimSpace(rev)
+	if len(rev) <= 12 {
+		return rev
+	}
+	return rev[:12]
+}
 
 func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
@@ -85,11 +115,12 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update lark-cli to the latest version",
-		Long: `Update lark-cli to the latest version.
+		Short: "Update lark-cli/lark-memory-cli to the latest version",
+		Long: `Update lark-cli/lark-memory-cli to the latest version.
 
 Detects the installation method automatically:
   - npm install: runs npm install -g @larksuite/cli@<version>
+  - lark-memory-cli source install: pulls jhn_memory, rebuilds, and syncs skills
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
@@ -102,6 +133,7 @@ Use --check to only check for updates without installing.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
+	cmdutil.SetRisk(cmd, "high-risk-write")
 
 	return cmd
 }
@@ -111,36 +143,40 @@ func updateRun(opts *UpdateOptions) error {
 	cur := currentVersion()
 	updater := newUpdater()
 
-	updater.CleanupStaleFiles()
+	if !opts.Check {
+		updater.CleanupStaleFiles()
+	}
 	output.PendingNotice = nil
+
+	// lark-memory-cli is installed from a source checkout and wrapper, not from
+	// @larksuite/cli on npm. Handle it before querying the npm-backed latest
+	// version registry; otherwise the fork would compare against upstream.
+	detect := updater.DetectInstallMethod()
+	if detect.Method == selfupdate.InstallMemorySource {
+		return doMemorySourceUpdate(opts, io, cur, detect, updater)
+	}
 
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
 	if err != nil {
-		return reportError(opts, io, output.ExitNetwork, "network", "failed to check latest version: %s", err)
+		return reportError(opts, io, "network",
+			errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to check latest version: %s", err).WithCause(err))
 	}
 
 	// 2. Validate version format
 	if update.ParseVersion(latest) == nil {
-		return reportError(opts, io, output.ExitInternal, "update_error", "invalid version from registry: %s", latest)
+		return reportError(opts, io, "update_error",
+			errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid version from registry: %s", latest))
 	}
 
 	// 3. Compare versions
 	if !opts.Force && !update.IsNewer(latest, cur) {
-		if opts.JSON {
-			output.PrintJson(io.Out, map[string]interface{}{
-				"ok": true, "previous_version": cur, "current_version": cur,
-				"latest_version": latest, "action": "already_up_to_date",
-				"message": fmt.Sprintf("lark-cli %s is already up to date", cur),
-			})
-			return nil
+		var skillsResult *skillscheck.SyncResult
+		if !opts.Check {
+			skillsResult = runSkillsAndState(updater, io, cur, opts.Force)
 		}
-		fmt.Fprintf(io.ErrOut, "%s lark-cli %s is already up to date\n", symOK(), cur)
-		return nil
+		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
-
-	// 4. Detect installation method
-	detect := updater.DetectInstallMethod()
 
 	// 5. --check
 	if opts.Check {
@@ -149,33 +185,162 @@ func updateRun(opts *UpdateOptions) error {
 
 	// 6. Execute update
 	if !detect.CanAutoUpdate() {
-		return doManualUpdate(opts, io, cur, latest, detect)
+		return doManualUpdate(opts, io, cur, latest, detect, updater)
 	}
 	return doNpmUpdate(opts, io, cur, latest, updater)
 }
 
+func doMemorySourceUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	result, err := updater.UpdateMemorySource(selfupdate.MemoryUpdateOptions{
+		SourceDir:   detect.SourceDir,
+		AppDir:      detect.AppDir,
+		WrapperPath: detect.WrapperPath,
+		Branch:      selfupdate.MemoryDefaultBranch,
+		Check:       opts.Check,
+		Force:       opts.Force,
+	})
+	if err != nil {
+		return reportError(opts, io, "update_error",
+			errs.NewInternalError(errs.SubtypeUnknown, "failed to update lark-memory-cli source install: %s", err).WithCause(err))
+	}
+
+	previousVersion := memorySourceVersionLabel(cur, result.PreviousRevision)
+	currentVersion := memorySourceVersionLabel(result.Version, result.CurrentRevision)
+	action := "updated"
+	message := fmt.Sprintf("lark-memory-cli updated from %s to %s", previousVersion, currentVersion)
+	if opts.Check {
+		if result.Updated {
+			action = "update_available"
+			message = fmt.Sprintf("lark-memory-cli source branch %s has an update available", result.Branch)
+		} else {
+			action = "already_up_to_date"
+			message = fmt.Sprintf("lark-memory-cli source branch %s is already up to date", result.Branch)
+		}
+	} else if !result.Updated {
+		action = "already_up_to_date"
+		message = fmt.Sprintf("lark-memory-cli source branch %s rebuilt at %s with no new commits", result.Branch, currentVersion)
+	}
+
+	if opts.JSON {
+		out := map[string]interface{}{
+			"ok":                true,
+			"previous_version":  cur,
+			"current_version":   firstNonEmpty(result.Version, cur),
+			"latest_version":    firstNonEmpty(result.Version, cur),
+			"action":            action,
+			"message":           message,
+			"install_method":    "memory_source",
+			"branch":            result.Branch,
+			"source_dir":        result.SourceDir,
+			"binary_path":       result.BinaryPath,
+			"wrapper_path":      result.WrapperPath,
+			"previous_revision": result.PreviousRevision,
+			"current_revision":  result.CurrentRevision,
+		}
+		if result.ControlPath != "" {
+			out["control_path"] = result.ControlPath
+		}
+		if result.RemoteRevision != "" {
+			out["remote_revision"] = result.RemoteRevision
+		}
+		if len(result.SkillsSynced) > 0 {
+			out["skills_action"] = "synced"
+			out["skills_synced"] = result.SkillsSynced
+		}
+		if len(result.SkillsArchived) > 0 {
+			out["skills_archived"] = result.SkillsArchived
+			out["duplicate_skills_action"] = "archived"
+			out["duplicate_skills_archived"] = result.SkillsArchived
+		}
+		if result.SkillsWarning != "" {
+			out["skills_warning"] = result.SkillsWarning
+		}
+		output.PrintJson(io.Out, out)
+		return nil
+	}
+
+	if opts.Check {
+		if result.Updated {
+			fmt.Fprintf(io.ErrOut, "Update available for lark-memory-cli branch %s: %s %s %s\n", result.Branch, shortRevision(result.PreviousRevision), symArrow(), shortRevision(result.RemoteRevision))
+			fmt.Fprintf(io.ErrOut, "\nRun `lark-memory-cli --update` to install.\n")
+		} else {
+			fmt.Fprintf(io.ErrOut, "%s lark-memory-cli branch %s is already up to date (%s)\n", symOK(), result.Branch, shortRevision(result.CurrentRevision))
+		}
+		return nil
+	}
+
+	fmt.Fprintf(io.ErrOut, "%s %s\n", symOK(), message)
+	fmt.Fprintf(io.ErrOut, "  Version: %s\n", currentVersion)
+	fmt.Fprintf(io.ErrOut, "  Revision: %s\n", shortRevision(result.CurrentRevision))
+	fmt.Fprintf(io.ErrOut, "  Source:  %s\n", result.SourceDir)
+	fmt.Fprintf(io.ErrOut, "  Binary:  %s\n", result.BinaryPath)
+	if result.ControlPath != "" {
+		fmt.Fprintf(io.ErrOut, "  Control: %s\n", result.ControlPath)
+	}
+	fmt.Fprintf(io.ErrOut, "  Wrapper: %s\n", result.WrapperPath)
+	if len(result.SkillsSynced) > 0 {
+		fmt.Fprintf(io.ErrOut, "  Skills:  synced %d skill directories\n", len(result.SkillsSynced))
+	}
+	if len(result.SkillsArchived) > 0 {
+		fmt.Fprintf(io.ErrOut, "  Skills:  archived %d retired or duplicate skill directories\n", len(result.SkillsArchived))
+	}
+	if result.SkillsWarning != "" {
+		fmt.Fprintf(io.ErrOut, "%s Skills sync warning: %s\n", symWarn(), result.SkillsWarning)
+	}
+	writeMemorySourceUpgradeNotes(io)
+	fmt.Fprintf(io.ErrOut, "  Restart Codex/Agent sessions to reload updated skills.\n")
+	return nil
+}
+
+func memorySourceVersionLabel(version, revision string) string {
+	version = strings.TrimSpace(version)
+	if version != "" {
+		return version
+	}
+	return shortRevision(revision)
+}
+
+func writeMemorySourceUpgradeNotes(io *cmdutil.IOStreams) {
+	fmt.Fprintln(io.ErrOut, "  升级点:")
+	for _, note := range memorySourceUpgradeNotes() {
+		fmt.Fprintf(io.ErrOut, "    - %s\n", note)
+	}
+}
+
+func memorySourceUpgradeNotes() []string {
+	return []string{
+		"Agent 读取 Memory 时优先选择 agentic_v1 版本；没有 agentic_v1 时回退到 default_variant_key。",
+		"时间范围图命令和选择器已更名为 graph-range；旧 graph-query 命令已移除。",
+	}
+}
+
 // --- Output helpers ---
 
-func reportError(opts *UpdateOptions, io *cmdutil.IOStreams, exitCode int, errType, format string, args ...interface{}) error {
-	msg := fmt.Sprintf(format, args...)
+// reportError emits the failure on the requested surface: JSON mode prints the
+// {ok:false, error:{type, message}} envelope to stdout and signals the typed
+// error's exit code bare; human mode returns the typed error for the
+// dispatcher to render.
+func reportError(opts *UpdateOptions, io *cmdutil.IOStreams, errType string, typedErr errs.TypedError) error {
 	if opts.JSON {
 		output.PrintJson(io.Out, map[string]interface{}{
-			"ok": false, "error": map[string]interface{}{"type": errType, "message": msg},
+			"ok": false, "error": map[string]interface{}{"type": errType, "message": typedErr.ProblemDetail().Message},
 		})
-		return output.ErrBare(exitCode)
+		return output.ErrBare(output.ExitCodeOf(typedErr))
 	}
-	return output.Errorf(exitCode, errType, "%s", msg)
+	return typedErr
 }
 
 func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
 	if opts.JSON {
-		output.PrintJson(io.Out, map[string]interface{}{
+		out := map[string]interface{}{
 			"ok": true, "previous_version": cur, "current_version": cur,
 			"latest_version": latest, "action": "update_available",
 			"auto_update": canAutoUpdate,
 			"message":     fmt.Sprintf("lark-cli %s %s %s available", cur, symArrow(), latest),
 			"url":         releaseURL(latest), "changelog": changelogURL(),
-		})
+		}
+		applySkillsStatus(out, cur)
+		output.PrintJson(io.Out, out)
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Update available: %s %s %s\n", cur, symArrow(), latest)
@@ -189,30 +354,35 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 	return nil
 }
 
-func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult) error {
+func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	skillsResult := runSkillsAndState(updater, io, cur, opts.Force)
+
 	reason := detect.ManualReason()
 	if opts.JSON {
-		output.PrintJson(io.Out, map[string]interface{}{
+		out := map[string]interface{}{
 			"ok": true, "previous_version": cur, "latest_version": latest,
 			"action":  "manual_required",
 			"message": fmt.Sprintf("Automatic update unavailable: %s (path: %s)", reason, detect.ResolvedPath),
 			"url":     releaseURL(latest), "changelog": changelogURL(),
-		})
+		}
+		applySkillsResult(out, skillsResult)
+		output.PrintJson(io.Out, out)
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, detect.ResolvedPath)
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, "\nOr install via npm:\n  npm install -g %s@%s\n", selfupdate.NpmPackage, latest)
-	fmt.Fprintf(io.ErrOut, "\nAfter updating, also update skills:\n  npx -y skills add larksuite/cli -g -y\n")
+	fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
+	emitSkillsTextHints(io, skillsResult)
 	return nil
 }
 
 func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, updater *selfupdate.Updater) error {
 	restore, err := updater.PrepareSelfReplace()
 	if err != nil {
-		return reportError(opts, io, output.ExitAPI, "update_error", "failed to prepare update: %s", err)
+		return reportError(opts, io, "update_error",
+			errs.NewAPIError(errs.SubtypeUnknown, "failed to prepare update: %s", err).WithCause(err))
 	}
 
 	if !opts.JSON {
@@ -264,8 +434,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 		return output.ErrBare(output.ExitAPI)
 	}
 
-	// Skills update (best-effort).
-	skillsResult := updater.RunSkillsUpdate()
+	skillsResult := runSkillsAndState(updater, io, latest, opts.Force)
 
 	if opts.JSON {
 		result := map[string]interface{}{
@@ -274,28 +443,17 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 			"message": fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
 			"url":     releaseURL(latest), "changelog": changelogURL(),
 		}
-		if skillsResult.Err != nil {
-			result["skills_warning"] = fmt.Sprintf("skills update failed: %s", skillsResult.Err)
-			if detail := strings.TrimSpace(skillsResult.Stderr.String()); detail != "" {
-				result["skills_detail"] = selfupdate.Truncate(detail, maxNpmOutput)
-			}
-		}
+		applySkillsResult(result, skillsResult)
 		output.PrintJson(io.Out, result)
 		return nil
 	}
 
 	fmt.Fprintf(io.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, "\nUpdating skills ...\n")
-	if skillsResult.Err != nil {
-		fmt.Fprintf(io.ErrOut, "%s Skills update failed: %s\n", symWarn(), skillsResult.Err)
-		if detail := strings.TrimSpace(skillsResult.Stderr.String()); detail != "" {
-			fmt.Fprintf(io.ErrOut, "  %s\n", selfupdate.Truncate(detail, 500))
-		}
-		fmt.Fprintf(io.ErrOut, "  Run manually: npx -y skills add larksuite/cli -g -y\n")
-	} else {
-		fmt.Fprintf(io.ErrOut, "%s Skills updated\n", symOK())
+	if skillsResult != nil {
+		fmt.Fprintf(io.ErrOut, "\nUpdating skills ...\n")
 	}
+	emitSkillsTextHints(io, skillsResult)
 	return nil
 }
 
@@ -310,5 +468,117 @@ func verificationFailureHint(updater *selfupdate.Updater, latest string) string 
 	if updater.CanRestorePreviousVersion() {
 		return "the previous version has been restored"
 	}
-	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually: npm install -g %s@%s, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+}
+
+func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool) *skillscheck.SyncResult {
+	if !force {
+		if existing, ok := skillscheck.ReadSyncedVersion(); ok && normalizeVersion(existing) == normalizeVersion(stateVersion) {
+			return nil
+		}
+	}
+	result := syncSkills(skillscheck.SyncOptions{
+		Version: stateVersion,
+		Force:   force,
+		Runner:  updater,
+	})
+	if result.Err != nil && strings.Contains(result.Err.Error(), "state not written") {
+		fmt.Fprintf(io.ErrOut, "warning: %v\n", result.Err)
+	}
+	return result
+}
+
+// reportAlreadyUpToDate emits the JSON / pretty output for the
+// already-up-to-date branch, including any skills_action / skills_warning
+// fields derived from skillsResult. When check is true, this is the pure
+// report path (spec §3.6): no side-effects, JSON envelope uses
+// skills_status (spec §4.2) instead of skills_action.
+func reportAlreadyUpToDate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, skillsResult *skillscheck.SyncResult, check bool) error {
+	if opts.JSON {
+		out := map[string]interface{}{
+			"ok": true, "previous_version": cur, "current_version": cur,
+			"latest_version": latest, "action": "already_up_to_date",
+			"message": fmt.Sprintf("lark-cli %s is already up to date", cur),
+		}
+		if check {
+			applySkillsStatus(out, cur)
+		} else {
+			applySkillsResult(out, skillsResult)
+		}
+		output.PrintJson(io.Out, out)
+		return nil
+	}
+	fmt.Fprintf(io.ErrOut, "%s lark-cli %s is already up to date\n", symOK(), cur)
+	if !check {
+		emitSkillsTextHints(io, skillsResult)
+	}
+	return nil
+}
+
+func applySkillsStatus(env map[string]interface{}, target string) {
+	state, readable, err := skillscheck.ReadState()
+	if err != nil || !readable || state.Version == "" {
+		return
+	}
+	status := map[string]interface{}{
+		"current": state.Version,
+		"target":  target,
+		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target),
+	}
+	if len(state.OfficialSkills) > 0 {
+		status["official"] = len(state.OfficialSkills)
+	}
+	if len(state.UpdatedSkills) > 0 {
+		status["updated"] = len(state.UpdatedSkills)
+	}
+	if len(state.SkippedDeletedSkills) > 0 {
+		status["skipped_deleted"] = state.SkippedDeletedSkills
+	}
+	env["skills_status"] = status
+}
+
+func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
+	switch {
+	case r == nil:
+		env["skills_action"] = "in_sync"
+	case r.Err != nil:
+		env["skills_action"] = "failed"
+		env["skills_warning"] = fmt.Sprintf("skills update failed: %s", r.Err)
+		env["skills_summary"] = skillsSummary(r)
+	default:
+		env["skills_action"] = "synced"
+		env["skills_summary"] = skillsSummary(r)
+	}
+}
+
+func skillsSummary(r *skillscheck.SyncResult) map[string]interface{} {
+	summary := map[string]interface{}{
+		"official":        len(r.Official),
+		"updated":         len(r.Updated),
+		"added":           len(r.Added),
+		"skipped_deleted": len(r.SkippedDeleted),
+	}
+	if len(r.Failed) > 0 {
+		summary["failed"] = r.Failed
+	}
+	return summary
+}
+
+func emitSkillsTextHints(io *cmdutil.IOStreams, r *skillscheck.SyncResult) {
+	switch {
+	case r == nil:
+	case r.Err != nil:
+		fmt.Fprintf(io.ErrOut, "%s Skills update failed: %v\n", symWarn(), r.Err)
+		if len(r.Failed) > 0 {
+			fmt.Fprintf(io.ErrOut, "  Failed skills: %s\n", strings.Join(r.Failed, ", "))
+		}
+		fmt.Fprintf(io.ErrOut, "  To retry all official skills: lark-cli update --force\n")
+	case r.Force:
+		fmt.Fprintf(io.ErrOut, "%s Skills updated: restored all %d official skills\n", symOK(), len(r.Official))
+	default:
+		fmt.Fprintf(io.ErrOut, "%s Skills updated: %d official, %d updated, %d added, %d skipped because deleted locally\n", symOK(), len(r.Official), len(r.Updated), len(r.Added), len(r.SkippedDeleted))
+		if len(r.SkippedDeleted) > 0 {
+			fmt.Fprintf(io.ErrOut, "  To restore all official skills: lark-cli update --force\n")
+		}
+	}
 }

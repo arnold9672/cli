@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/internal/output"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
 
 var BaseFormQuestionsList = common.Shortcut{
@@ -21,9 +21,12 @@ var BaseFormQuestionsList = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "base-token", Desc: "Base app token (base_token)", Required: true},
+		baseTokenFlag(true),
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
+	},
+	Tips: []string{
+		"Use returned question id values for +form-questions-update and +form-questions-delete.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

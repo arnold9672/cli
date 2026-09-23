@@ -6,7 +6,6 @@ package im
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,38 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/shortcuts/common"
+	"code.byted.org/lark_search/larksuite-cli/errs"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
 )
-
-func decodePostContentForTest(t *testing.T, raw string) []interface{} {
-	t.Helper()
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v, raw=%s", err, raw)
-	}
-	locale, _ := payload["zh_cn"].(map[string]interface{})
-	content, _ := locale["content"].([]interface{})
-	if content == nil {
-		t.Fatalf("post content missing: %#v", payload)
-	}
-	return content
-}
-
-func decodePostParagraphForTest(t *testing.T, raw string, idx int) map[string]interface{} {
-	t.Helper()
-
-	content := decodePostContentForTest(t, raw)
-	if idx >= len(content) {
-		t.Fatalf("paragraph index %d out of range, len=%d, raw=%s", idx, len(content), raw)
-	}
-	paragraph, _ := content[idx].([]interface{})
-	if len(paragraph) != 1 {
-		t.Fatalf("paragraph %d = %#v, want single node", idx, paragraph)
-	}
-	node, _ := paragraph[0].(map[string]interface{})
-	return node
-}
 
 func TestNormalizeAtMentions(t *testing.T) {
 	input := `<at id=ou_alpha/> hi <at open_id="ou_beta"> and <at user_id=ou_gamma /> and <at email="x@example.com"/>`
@@ -76,6 +46,56 @@ func TestDetectIMFileType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := detectIMFileType(tt.path); got != tt.want {
 				t.Fatalf("detectIMFileType(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateAudioMessageInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "empty", value: ""},
+		{name: "existing file key", value: "file_abc"},
+		{name: "opus file", value: "./voice.opus"},
+		{name: "ogg opus file", value: "./voice.ogg"},
+		{name: "uppercase opus", value: "./VOICE.OPUS"},
+		{name: "mp3 local file", value: "./voice.mp3", wantErr: true},
+		{name: "wav local file", value: "./voice.wav", wantErr: true},
+		{name: "extensionless local path", value: "./voice"},
+		{name: "opus url", value: "https://example.com/voice.opus?download=1"},
+		{name: "ogg url", value: "https://example.com/voice.ogg?download=1"},
+		{name: "mp3 url", value: "https://example.com/voice.mp3?download=1", wantErr: true},
+		{name: "extensionless url", value: "https://example.com/download?id=1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAudioMessageInput("--audio", tt.value)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "--audio supports only Opus audio files") {
+					t.Fatalf("validateAudioMessageInput(%q) error = %v", tt.value, err)
+				}
+				p, ok := errs.ProblemOf(err)
+				if !ok {
+					t.Fatalf("validateAudioMessageInput(%q) error is not typed: %v", tt.value, err)
+				}
+				if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+					t.Fatalf("ProblemOf(%q) = category %q subtype %q", tt.value, p.Category, p.Subtype)
+				}
+				validationErr, ok := err.(*errs.ValidationError)
+				if !ok || validationErr.Param != "--audio" {
+					t.Fatalf("validateAudioMessageInput(%q) param = %q, want --audio", tt.value, validationErr.Param)
+				}
+				if !strings.Contains(p.Hint, "use --file") || !strings.Contains(p.Hint, "ffmpeg") {
+					t.Fatalf("validateAudioMessageInput(%q) hint = %q, want --file and ffmpeg guidance", tt.value, p.Hint)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("validateAudioMessageInput(%q) unexpected error = %v", tt.value, err)
 			}
 		})
 	}
@@ -168,16 +188,6 @@ func TestWrapMarkdownAsPostForDryRun(t *testing.T) {
 	}
 	if !strings.Contains(desc, "placeholder image keys") {
 		t.Fatalf("wrapMarkdownAsPostForDryRun() desc = %q, want placeholder note", desc)
-	}
-}
-
-func TestWrapMarkdownAsPostForDryRun_SegmentedBlankLines(t *testing.T) {
-	content, _ := wrapMarkdownAsPostForDryRun("hello\n\n![alt](https://example.com/a.png)")
-	if !strings.Contains(content, `![alt](img_dryrun_1)`) {
-		t.Fatalf("wrapMarkdownAsPostForDryRun(segmented) content = %q, want placeholder img key", content)
-	}
-	if !strings.Contains(content, `"tag":"text"`) {
-		t.Fatalf("wrapMarkdownAsPostForDryRun(segmented) content = %q, want blank-line text paragraph", content)
 	}
 }
 
@@ -375,88 +385,15 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 
 func TestWrapMarkdownAsPost(t *testing.T) {
 	got := wrapMarkdownAsPost("hello **world**")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 1 {
-		t.Fatalf("wrapMarkdownAsPost() content len = %d, want 1", len(content))
+	// Should produce valid JSON with post structure
+	if !strings.Contains(got, `"tag":"md"`) {
+		t.Fatalf("wrapMarkdownAsPost() missing md tag: %s", got)
 	}
-	node := decodePostParagraphForTest(t, got, 0)
-	if node["tag"] != "md" {
-		t.Fatalf("wrapMarkdownAsPost() tag = %#v, want md", node["tag"])
+	if !strings.Contains(got, `"zh_cn"`) {
+		t.Fatalf("wrapMarkdownAsPost() missing zh_cn: %s", got)
 	}
-	if node["text"] != "hello **world**" {
-		t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "hello **world**")
-	}
-}
-
-func TestShouldUseSegmentedPost(t *testing.T) {
-	tests := []struct {
-		name     string
-		markdown string
-		want     bool
-	}{
-		{name: "single newline", markdown: "a\nb", want: false},
-		{name: "blank line", markdown: "a\n\nb", want: true},
-		{name: "blank line with spaces", markdown: "a\n  \nb", want: true},
-		{name: "multiple blank lines", markdown: "a\n \n \n b", want: true},
-		{name: "blank lines inside code block only", markdown: "```go\n\n\nfmt.Println(1)\n```\nnext", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldUseSegmentedPost(tt.markdown); got != tt.want {
-				t.Fatalf("shouldUseSegmentedPost(%q) = %v, want %v", tt.markdown, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestWrapMarkdownAsPost_SegmentedBlankLines(t *testing.T) {
-	got := wrapMarkdownAsPost("a\n\nb")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 3 {
-		t.Fatalf("wrapMarkdownAsPost(a\\n\\nb) content len = %d, want 3", len(content))
-	}
-
-	first := decodePostParagraphForTest(t, got, 0)
-	if first["tag"] != "md" || first["text"] != "a" {
-		t.Fatalf("first paragraph = %#v, want md/a", first)
-	}
-
-	second := decodePostParagraphForTest(t, got, 1)
-	if second["tag"] != "text" || second["text"] != postBlankLinePlaceholder {
-		t.Fatalf("second paragraph = %#v, want blank text placeholder", second)
-	}
-
-	third := decodePostParagraphForTest(t, got, 2)
-	if third["tag"] != "md" || third["text"] != "b" {
-		t.Fatalf("third paragraph = %#v, want md/b", third)
-	}
-}
-
-func TestWrapMarkdownAsPost_SegmentedMultipleBlankLines(t *testing.T) {
-	got := wrapMarkdownAsPost("a\n\n\nb")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 4 {
-		t.Fatalf("wrapMarkdownAsPost(a\\n\\n\\nb) content len = %d, want 4", len(content))
-	}
-
-	for i := 1; i <= 2; i++ {
-		node := decodePostParagraphForTest(t, got, i)
-		if node["tag"] != "text" || node["text"] != postBlankLinePlaceholder {
-			t.Fatalf("blank paragraph %d = %#v, want blank text placeholder", i, node)
-		}
-	}
-}
-
-func TestWrapMarkdownAsPost_SegmentedBlankLinesWithSpaces(t *testing.T) {
-	got := wrapMarkdownAsPost("a\n  \nb")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 3 {
-		t.Fatalf("wrapMarkdownAsPost(a\\n  \\nb) content len = %d, want 3", len(content))
-	}
-	node := decodePostParagraphForTest(t, got, 1)
-	if node["tag"] != "text" || node["text"] != postBlankLinePlaceholder {
-		t.Fatalf("middle paragraph = %#v, want blank text placeholder", node)
+	if !strings.Contains(got, "hello **world**") {
+		t.Fatalf("wrapMarkdownAsPost() missing content: %s", got)
 	}
 }
 
@@ -593,7 +530,7 @@ func TestDownloadIMResourceToPathHTTPClientError(t *testing.T) {
 		return nil, errors.New("http client unavailable")
 	}))
 
-	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin")
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "img_123", "image", "out.bin", true)
 	if err == nil || !strings.Contains(err.Error(), "http client unavailable") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
@@ -637,6 +574,74 @@ func TestParseTotalSize(t *testing.T) {
 	}
 }
 
+func TestParseContentDispositionFilename(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		want   string
+	}{
+		{name: "empty header", header: "", want: ""},
+		{name: "no filename param", header: "attachment", want: ""},
+		{name: "plain filename", header: `attachment; filename="report.xlsx"`, want: "report.xlsx"},
+		{name: "unquoted filename", header: `attachment; filename=report.xlsx`, want: "report.xlsx"},
+		{name: "RFC 5987 UTF-8 encoded", header: `attachment; filename*=UTF-8''%E5%AD%A3%E5%BA%A6%E6%8A%A5%E5%91%8A.xlsx`, want: "季度报告.xlsx"},
+		{name: "RFC 5987 takes priority over plain", header: `attachment; filename="fallback.xlsx"; filename*=UTF-8''%E5%AD%A3%E5%BA%A6%E6%8A%A5%E5%91%8A.xlsx`, want: "季度报告.xlsx"},
+		{name: "path traversal stripped", header: `attachment; filename="../../etc/passwd"`, want: "passwd"},
+		{name: "windows path stripped", header: `attachment; filename="C:\\Windows\\evil.exe"`, want: "evil.exe"},
+		{name: "control char rejected", header: "attachment; filename=\"evil\x01file.txt\"", want: ""},
+		{name: "malformed header", header: "not/valid/mime; ===", want: ""},
+		{name: "whitespace trimmed", header: `attachment; filename="  report.pdf  "`, want: "report.pdf"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseContentDispositionFilename(tt.header); got != tt.want {
+				t.Fatalf("parseContentDispositionFilename(%q) = %q, want %q", tt.header, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveIMResourceDownloadPath(t *testing.T) {
+	tests := []struct {
+		name               string
+		safePath           string
+		contentType        string
+		contentDisposition string
+		preserveBasename   bool
+		want               string
+	}{
+		// safePath already has extension: always return as-is
+		{name: "user path with ext, no CD", safePath: "out.xlsx", contentType: "application/pdf", preserveBasename: true, want: "out.xlsx"},
+		{name: "user path with ext, CD present", safePath: "out.xlsx", contentDisposition: `attachment; filename="server.pdf"`, preserveBasename: true, want: "out.xlsx"},
+		// No --output: use CD filename when present
+		{name: "default path, CD filename", safePath: "file_xxx", contentDisposition: `attachment; filename="季度报告.xlsx"`, want: "季度报告.xlsx"},
+		{name: "default path, CD RFC5987", safePath: "file_xxx", contentDisposition: `attachment; filename*=UTF-8''%E5%AD%A3%E5%BA%A6%E6%8A%A5%E5%91%8A.xlsx`, want: "季度报告.xlsx"},
+		{name: "default path, no CD, MIME ext", safePath: "file_xxx", contentType: "application/pdf", want: "file_xxx.pdf"},
+		{name: "default path, no CD, unknown MIME", safePath: "file_xxx", contentType: "application/x-unknown", want: "file_xxx"},
+		{name: "default path, CD with dir component", safePath: "downloads/file_xxx", contentDisposition: `attachment; filename="report.xlsx"`, want: "downloads/report.xlsx"},
+		// User --output without extension: use CD filename's extension
+		{name: "user path no ext, CD with ext", safePath: "myfile", contentDisposition: `attachment; filename="server.pdf"`, preserveBasename: true, want: "myfile.pdf"},
+		{name: "user path no ext, CD no ext, MIME ext", safePath: "myfile", contentDisposition: `attachment; filename="noext"`, contentType: "image/png", preserveBasename: true, want: "myfile.png"},
+		{name: "user path no ext, no CD, MIME ext", safePath: "myfile", contentType: "image/jpeg", preserveBasename: true, want: "myfile.jpg"},
+		// Batch --download-resources (preserveBasename=true): the file_key basename
+		// is kept and only the extension borrowed, so two resources whose servers
+		// return the SAME Content-Disposition filename still resolve to distinct
+		// paths instead of clobbering each other.
+		{name: "batch key A, shared CD filename", safePath: "lark-im-resources/file_aaa", contentDisposition: `attachment; filename="download.bin"`, preserveBasename: true, want: "lark-im-resources/file_aaa.bin"},
+		{name: "batch key B, shared CD filename", safePath: "lark-im-resources/file_bbb", contentDisposition: `attachment; filename="download.bin"`, preserveBasename: true, want: "lark-im-resources/file_bbb.bin"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveIMResourceDownloadPath(tt.safePath, tt.contentType, tt.contentDisposition, tt.preserveBasename)
+			if got != tt.want {
+				t.Fatalf("resolveIMResourceDownloadPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestShortcuts(t *testing.T) {
 	var commands []string
 	for _, shortcut := range Shortcuts() {
@@ -645,6 +650,7 @@ func TestShortcuts(t *testing.T) {
 
 	want := []string{
 		"+chat-create",
+		"+chat-list",
 		"+chat-messages-list",
 		"+chat-search",
 		"+chat-update",
@@ -654,6 +660,15 @@ func TestShortcuts(t *testing.T) {
 		"+messages-search",
 		"+messages-send",
 		"+threads-messages-list",
+		"+flag-create",
+		"+flag-cancel",
+		"+flag-list",
+		"+feed-shortcut-create",
+		"+feed-shortcut-remove",
+		"+feed-shortcut-list",
+		"+feed-group-list",
+		"+feed-group-list-item",
+		"+feed-group-query-item",
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("Shortcuts() commands = %#v, want %#v", commands, want)

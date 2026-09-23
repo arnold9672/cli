@@ -9,12 +9,15 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/shortcuts/common"
-	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
-	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/common"
+	draftpkg "code.byted.org/lark_search/larksuite-cli/shortcuts/mail/draft"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/emlbuilder"
+	"code.byted.org/lark_search/larksuite-cli/shortcuts/mail/lint"
 )
 
+// draftCreateInput bundles all +draft-create user flags into a single
+// struct so parseDraftCreateInput / buildRawEMLForDraftCreate have a
+// uniform value type to pass around.
 type draftCreateInput struct {
 	To        string
 	Subject   string
@@ -27,6 +30,9 @@ type draftCreateInput struct {
 	PlainText bool
 }
 
+// MailDraftCreate is the `+draft-create` shortcut: create a brand-new mail
+// draft from scratch. For reply drafts use +reply; for forward drafts use
+// +forward.
 var MailDraftCreate = common.Shortcut{
 	Service:     "mail",
 	Command:     "+draft-create",
@@ -37,8 +43,9 @@ var MailDraftCreate = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "to", Desc: "Optional. Full To recipient list. Separate multiple addresses with commas. Display-name format is supported. When omitted, the draft is created without recipients (they can be added later via +draft-edit)."},
-		{Name: "subject", Desc: "Required. Final draft subject. Pass the full subject you want to appear in the draft.", Required: true},
-		{Name: "body", Desc: "Required. Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode.", Required: true},
+		{Name: "subject", Desc: "Final draft subject. Pass the full subject you want to appear in the draft. Required unless --template-id supplies a non-empty subject."},
+		{Name: "body", Desc: "Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
+		bodyFileFlag,
 		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's primary address is used."},
 		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "Optional. Full Cc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
@@ -46,97 +53,224 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
 		{Name: "attach", Desc: "Optional. Regular attachment file paths (relative path only). Separate multiple paths with commas. Each path must point to a readable local file."},
 		{Name: "inline", Desc: "Optional. Inline images as a JSON array. Each entry: {\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}. All file_path values must be relative paths. Cannot be used with --plain-text. CID images are embedded via <img src=\"cid:...\"> in the HTML body. CID is a unique identifier, e.g. a random hex string like \"a1b2c3d4e5f6a7b8c9d0\"."},
+		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
+		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
+		noSignatureFlag,
+		priorityFlag,
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
+		showLintDetailsFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		input, err := parseDraftCreateInput(runtime)
-		if err != nil {
-			return common.NewDryRunAPI().Set("error", err.Error())
-		}
 		mailboxID := resolveComposeMailboxID(runtime)
-		return common.NewDryRunAPI().
-			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.").
-			GET(mailboxPath(mailboxID, "profile")).
+		api := common.NewDryRunAPI().
+			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.")
+		if tid := runtime.Str("template-id"); tid != "" {
+			api = api.GET(templateMailboxPath(mailboxID, tid)).
+				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
+		}
+		api = api.GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
 				"_preview": map[string]interface{}{
-					"to":      input.To,
-					"subject": input.Subject,
+					"to":      runtime.Str("to"),
+					"subject": runtime.Str("subject"),
 				},
 			})
+		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("subject")) == "" {
-			return output.ErrValidation("--subject is required; pass the final email subject")
-		}
-		if strings.TrimSpace(runtime.Str("body")) == "" {
-			return output.ErrValidation("--body is required; pass the full email body")
-		}
-		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+		if err := validateTemplateID(runtime.Str("template-id")); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+		hasTemplate := runtime.Str("template-id") != ""
+		bodyFlag := runtime.Str("body")
+		bodyFile := strings.TrimSpace(runtime.Str("body-file"))
+		if err := validateBodyFileMutex(bodyFlag, bodyFile, runtime.ValidatePath); err != nil {
 			return err
 		}
-		return nil
+		if !hasTemplate && strings.TrimSpace(runtime.Str("subject")) == "" {
+			return mailValidationParamError("--subject", "--subject is required; pass the final email subject (or use --template-id)")
+		}
+		if err := validateNoSignatureConflict(runtime.Bool("no-signature"), runtime.Str("signature-id")); err != nil {
+			return err
+		}
+		if err := validateEventFlags(runtime); err != nil {
+			return err
+		}
+		// Resolve the body (reading --body-file if set) so the inline /
+		// HTML check sees the real body, not an empty placeholder.
+		body, bErr := resolveBodyFromFlags(runtime)
+		if bErr != nil {
+			return bErr
+		}
+		if err := validateRequiredResolvedBody(body, hasTemplate, "--body or --body-file is required; pass the full email body (or use --template-id)"); err != nil {
+			return err
+		}
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), body); err != nil {
+			return err
+		}
+		return validatePriorityFlag(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		input, err := parseDraftCreateInput(runtime)
+		priority, err := parsePriority(runtime.Str("priority"))
 		if err != nil {
 			return err
 		}
 		mailboxID := resolveComposeMailboxID(runtime)
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"), runtime.Str("from"))
+		body, bErr := resolveBodyFromFlags(runtime)
+		if bErr != nil {
+			return bErr
+		}
+		input := draftCreateInput{
+			To:        runtime.Str("to"),
+			Subject:   runtime.Str("subject"),
+			Body:      body,
+			From:      runtime.Str("from"),
+			CC:        runtime.Str("cc"),
+			BCC:       runtime.Str("bcc"),
+			Attach:    runtime.Str("attach"),
+			Inline:    runtime.Str("inline"),
+			PlainText: runtime.Bool("plain-text"),
+		}
+		var templateLargeAttachmentIDs []string
+		var templateInlineAttachments []templateInlineRef
+		var templateSmallAttachments []templateAttachmentRef
+		templateID := runtime.Str("template-id")
+		if tid := templateID; tid != "" {
+			tpl, err := fetchTemplate(runtime, mailboxID, tid)
+			if err != nil {
+				return err
+			}
+			merged := applyTemplate(
+				templateShortcutDraftCreate, tpl,
+				"", "", "", "", "",
+				input.To, input.CC, input.BCC, input.Subject, input.Body,
+			)
+			input.To = merged.To
+			input.CC = merged.Cc
+			input.BCC = merged.Bcc
+			input.Subject = merged.Subject
+			input.Body = merged.Body
+			if !input.PlainText && merged.IsPlainTextMode {
+				input.PlainText = true
+			}
+			templateLargeAttachmentIDs = merged.LargeAttachmentIDs
+			templateInlineAttachments = merged.InlineAttachments
+			templateSmallAttachments = merged.SmallAttachments
+			for _, w := range merged.Warnings {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
+			}
+			inlineCount, largeCount := countAttachmentsByType(tpl.Attachments)
+			logTemplateInfo(runtime, "apply.draft_create", map[string]interface{}{
+				"mailbox_id":         mailboxID,
+				"template_id":        tid,
+				"is_plain_text_mode": input.PlainText,
+				"attachments_total":  len(tpl.Attachments),
+				"inline_count":       inlineCount,
+				"large_count":        largeCount,
+				"tos_count":          countAddresses(input.To),
+				"ccs_count":          countAddresses(input.CC),
+				"bccs_count":         countAddresses(input.BCC),
+			})
+		}
+		if strings.TrimSpace(input.Subject) == "" {
+			return mailValidationParamError("--subject", "effective subject is empty after applying template; pass --subject explicitly")
+		}
+		if strings.TrimSpace(input.Body) == "" {
+			return mailValidationParamError("--body", "effective body is empty after applying template; pass --body explicitly")
+		}
+		signatureID := runtime.Str("signature-id")
+		noSignature := runtime.Bool("no-signature")
+		senderEmail := resolveComposeSenderEmail(runtime)
+		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
+		if noSignature {
+			signatureID = ""
+		} else if signatureID == "" {
+			signatureID = autoResolveSignatureID(runtime, mailboxID, senderEmail, false)
+		}
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
+			runtime.Str("signature-id") != "", !input.PlainText)
 		if err != nil {
 			return err
 		}
-		rawEML, err := buildRawEMLForDraftCreate(runtime, input, sigResult)
+		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult, priority,
+			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail)
 		if err != nil {
 			return err
 		}
-		draftID, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
+		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
-			return fmt.Errorf("create draft failed: %w", err)
+			return mailDecorateProblemMessage(err, "create draft failed")
 		}
-		out := map[string]interface{}{"draft_id": draftID}
+		out := map[string]interface{}{"draft_id": draftResult.DraftID}
+		if draftResult.Reference != "" {
+			out["reference"] = draftResult.Reference
+		}
+		// Writing-path lint envelope: default has no lint fields; full Finding
+		// arrays (`lint_applied[]` / `original_blocked[]`) only when the
+		// caller asked for them via --show-lint-details.
+		applyLintToEnvelope(out, lintApplied, lintBlocked, runtime.Bool("show-lint-details"))
+		addComposeHint(out)
+		// `draft_edit_hint` is attached ONLY here (+draft-create); the other 5
+		// compose shortcuts do not — see addDraftEditHint for the rationale.
+		addDraftEditHint(out)
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft created.")
-			fmt.Fprintf(w, "draft_id: %s\n", draftID)
+			// Intentionally keep +draft-create output minimal: unlike reply/forward/send
+			// draft-save flows, it does not add a follow-up send tip.
+			fmt.Fprintf(w, "draft_id: %s\n", draftResult.DraftID)
+			if reference, _ := out["reference"].(string); reference != "" {
+				fmt.Fprintf(w, "reference: %s\n", reference)
+			}
 		})
 		return nil
 	},
 }
 
-func parseDraftCreateInput(runtime *common.RuntimeContext) (draftCreateInput, error) {
-	input := draftCreateInput{
-		To:        runtime.Str("to"),
-		Subject:   runtime.Str("subject"),
-		Body:      runtime.Str("body"),
-		From:      runtime.Str("from"),
-		CC:        runtime.Str("cc"),
-		BCC:       runtime.Str("bcc"),
-		Attach:    runtime.Str("attach"),
-		Inline:    runtime.Str("inline"),
-		PlainText: runtime.Bool("plain-text"),
-	}
-	if strings.TrimSpace(input.Subject) == "" {
-		return input, output.ErrValidation("--subject is required; pass the final email subject")
-	}
-	if strings.TrimSpace(input.Body) == "" {
-		return input, output.ErrValidation("--body is required; pass the full email body")
-	}
-	return input, nil
-}
+// buildRawEMLForDraftCreate assembles a base64url-encoded EML for the
+// +draft-create shortcut. It resolves the sender from runtime / input,
+// validates recipient counts, applies signature templates, resolves local
+// image paths to CID-referenced inline parts, enforces attachment limits,
+// applies priority headers, and optionally adds the Disposition-Notification-
+// To header when --request-receipt is set. senderEmail is required; empty
+// senderEmail returns an error early. The returned string is ready to POST
+// to the drafts endpoint. ctx is plumbed through for large-attachment
+// processing.
+//
+// Returns the rawEML, the writing-path lint findings (lint_applied /
+// original_blocked — never nil; the arrays must always be present), and
+// any error encountered.
+func buildRawEMLForDraftCreate(
+	ctx context.Context,
+	runtime *common.RuntimeContext,
+	input draftCreateInput,
+	sigResult *signatureResult,
+	priority string,
+	templateLargeAttachmentIDs []string,
+	mailboxID, templateID string,
+	templateInlineAttachments []templateInlineRef,
+	templateSmallAttachments []templateAttachmentRef,
+	senderEmailHint string,
+) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
+	// Initialise lint findings as empty (non-nil) slices so callers can
+	// surface them through the envelope unconditionally even on the
+	// plain-text branch.
+	lintApplied, lintBlocked = emptyLintFindings()
 
-func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreateInput, sigResult *signatureResult) (string, error) {
-	senderEmail := resolveComposeSenderEmail(runtime)
+	// Use the pre-resolved senderEmail when available (avoids a duplicate
+	// profile API call when Execute already fetched it for auto-resolve).
+	senderEmail := senderEmailHint
 	if senderEmail == "" {
-		return "", fmt.Errorf("unable to determine sender email; please specify --from explicitly")
+		senderEmail = resolveComposeSenderEmail(runtime)
+	}
+	if senderEmail == "" {
+		return "", lintApplied, lintBlocked, mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 	}
 
 	if err := validateRecipientCount(input.To, input.CC, input.BCC); err != nil {
-		return "", err
+		return "", lintApplied, lintBlocked, err
 	}
 
 	bld := emlbuilder.New().WithFileIO(runtime.FileIO()).
@@ -148,19 +282,33 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 	if senderEmail != "" {
 		bld = bld.From("", senderEmail)
 	}
+	// senderEmail non-emptiness is already enforced above (L140); the flag-
+	// driven guard here only exists to make the relationship explicit to
+	// readers. requireSenderForRequestReceipt unifies this with the other
+	// compose shortcuts; if it ever trips in this path, the above check
+	// regressed.
+	if err := requireSenderForRequestReceipt(runtime, senderEmail); err != nil {
+		return "", lintApplied, lintBlocked, err
+	}
+	if runtime.Bool("request-receipt") {
+		bld = bld.DispositionNotificationTo("", senderEmail)
+	}
 	if input.CC != "" {
 		bld = bld.CCAddrs(parseNetAddrs(input.CC))
 	}
 	if input.BCC != "" {
 		bld = bld.BCCAddrs(parseNetAddrs(input.BCC))
 	}
-	inlineSpecs, err := parseInlineSpecs(input.Inline)
-	if err != nil {
-		return "", output.ErrValidation("%v", err)
+	inlineSpecs, parseErr := parseInlineSpecs(input.Inline)
+	if parseErr != nil {
+		return "", lintApplied, lintBlocked, parseErr
 	}
 	var autoResolvedPaths []string
+	var composedHTMLBody string
+	var composedTextBody string
 	if input.PlainText {
-		bld = bld.TextBody([]byte(input.Body))
+		composedTextBody = injectPlainTextSignature(input.Body, sigResult)
+		bld = bld.TextBody([]byte(composedTextBody))
 	} else if bodyIsHTML(input.Body) || sigResult != nil {
 		htmlBody := input.Body
 		if !bodyIsHTML(input.Body) {
@@ -168,10 +316,19 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 		}
 		resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
 		if resolveErr != nil {
-			return "", resolveErr
+			return "", lintApplied, lintBlocked, mailValidationError("failed to resolve local image paths: %v", resolveErr).WithCause(resolveErr)
 		}
 		resolved = injectSignatureIntoBody(resolved, sigResult)
-		bld = bld.HTMLBody([]byte(resolved))
+		// Writing-path lint: AutoFix=true / Strict=false — the writing-path
+		// safety contract has no `--no-lint` opt-out. Runs AFTER
+		// applyTemplate (in caller) + ResolveLocalImagePaths +
+		// injectSignatureIntoBody so the lint sees the final HTML the
+		// recipient renderer will see.
+		cleaned, rep := runWritePathLint(resolved)
+		resolved = cleaned
+		lintApplied, lintBlocked = rep.Applied, rep.Blocked
+		composedHTMLBody = resolved
+		bld = bld.HTMLBody([]byte(composedHTMLBody))
 		bld = addSignatureImagesToBuilder(bld, sigResult)
 		var allCIDs []string
 		for _, ref := range refs {
@@ -184,22 +341,47 @@ func buildRawEMLForDraftCreate(runtime *common.RuntimeContext, input draftCreate
 			allCIDs = append(allCIDs, spec.CID)
 		}
 		allCIDs = append(allCIDs, signatureCIDs(sigResult)...)
-		if err := validateInlineCIDs(resolved, allCIDs, nil); err != nil {
-			return "", err
+		var tplInlineCIDs []string
+		var embedErr error
+		bld, tplInlineCIDs, embedErr = embedTemplateInlineAttachments(ctx, runtime, bld, resolved, mailboxID, templateID, templateInlineAttachments)
+		if embedErr != nil {
+			return "", lintApplied, lintBlocked, embedErr
+		}
+		allCIDs = append(allCIDs, tplInlineCIDs...)
+		if cidErr := validateInlineCIDs(resolved, allCIDs, nil); cidErr != nil {
+			return "", lintApplied, lintBlocked, cidErr
 		}
 	} else {
-		bld = bld.TextBody([]byte(input.Body))
+		composedTextBody = input.Body
+		bld = bld.TextBody([]byte(composedTextBody))
 	}
-	allFilePaths := append(append(splitByComma(input.Attach), inlineSpecFilePaths(inlineSpecs)...), autoResolvedPaths...)
-	if err := checkAttachmentSizeLimit(runtime.FileIO(), allFilePaths, 0); err != nil {
-		return "", err
+	// Embed template SMALL non-inline attachments via AddAttachment. No-op
+	// when the template contributes none; runs in both HTML and plain-text
+	// branches because regular attachments are independent of body mode.
+	var templateSmallBytes int64
+	var smallErr error
+	bld, templateSmallBytes, smallErr = embedTemplateSmallAttachments(ctx, runtime, bld, mailboxID, templateID, templateSmallAttachments)
+	if smallErr != nil {
+		return "", lintApplied, lintBlocked, smallErr
 	}
-	for _, path := range splitByComma(input.Attach) {
-		bld = bld.AddFileAttachment(path)
+	bld = applyPriority(bld, priority)
+	if calData := buildCalendarBody(runtime, senderEmail, input.To, input.CC); calData != nil {
+		bld = bld.CalendarBody(calData)
 	}
-	rawEML, err := bld.BuildBase64URL()
-	if err != nil {
-		return "", output.ErrValidation("build EML failed: %v", err)
+	allInlinePaths := append(inlineSpecFilePaths(inlineSpecs), autoResolvedPaths...)
+	composedBodySize := int64(len(composedHTMLBody) + len(composedTextBody))
+	emlBase := estimateEMLBaseSize(runtime.FileIO(), composedBodySize, allInlinePaths, 0) + templateSmallBytes
+	var largeErr error
+	bld, largeErr = processLargeAttachments(ctx, runtime, bld, composedHTMLBody, composedTextBody, splitByComma(input.Attach), emlBase, 0)
+	if largeErr != nil {
+		return "", lintApplied, lintBlocked, largeErr
 	}
-	return rawEML, nil
+	if hdr, hdrErr := encodeTemplateLargeAttachmentHeader(templateLargeAttachmentIDs); hdrErr == nil && hdr != "" {
+		bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, hdr)
+	}
+	rawEML, buildErr := bld.BuildBase64URL()
+	if buildErr != nil {
+		return "", lintApplied, lintBlocked, mailValidationError("build EML failed: %v", buildErr).WithCause(buildErr)
+	}
+	return rawEML, lintApplied, lintBlocked, nil
 }
