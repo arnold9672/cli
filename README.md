@@ -355,7 +355,7 @@ lark-memory-cli memory +graph-search --as user \
   `x-tt-env: ppe_memory_hub`，与其它四个命令一致。可用 `LARKSUITE_CLI_MEMORY_TT_ENV`
   临时覆盖当前进程。
 - 调用 Knowledge QA 前，命令先用当前 UAT 调用 `/open-apis/authen/v1/user_info` 获取 `open_id`，再通过
-  `https://lgadymoe.fn.bytedance.net/knowledge_qa/out_id_to_in_id` 转换为内部 UID；Knowledge QA 使用同一
+  `https://f3s0wk4f.fn.bytedance.net/knowledge_qa/out_id_to_in_id` 转换为内部 UID；Knowledge QA 使用同一
   FaaS 下的 `/knowledge_qa/search`。转换请求与 Graph
   请求使用相同 `x-tt-env`，不存在本地 UID 覆盖入口。
 - `search_candidates` 只来自权限过滤后的 `passages`，并保留候选 `content` 作为最新事实基线；

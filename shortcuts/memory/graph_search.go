@@ -19,8 +19,9 @@ import (
 const (
 	graphSearchService                     = memoryService
 	graphSearchCommand                     = "+graph-search"
-	graphSearchKnowledgeQAURL              = "https://lgadymoe.fn.bytedance.net/knowledge_qa/search"
-	graphSearchIdentityURL                 = "https://lgadymoe.fn.bytedance.net/knowledge_qa/out_id_to_in_id"
+	graphSearchFaaSBaseURL                 = "https://f3s0wk4f.fn.bytedance.net"
+	graphSearchKnowledgeQAURL              = graphSearchFaaSBaseURL + "/knowledge_qa/search"
+	graphSearchIdentityURL                 = graphSearchFaaSBaseURL + "/knowledge_qa/out_id_to_in_id"
 	graphSearchUserInfoPath                = "/open-apis/authen/v1/user_info"
 	graphSearchOpenIDType            int64 = 3
 	graphSearchTenantID              int64 = 1

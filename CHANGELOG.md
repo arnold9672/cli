@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **memory**: Point Graph Search identity conversion and Knowledge QA requests at the active `suite.usearch.dialog_api` FaaS host.
 - **memory update**: Discover Homebrew Cellar Go installations, reject Go versions older than 1.23, and keep `GO_BIN` as the highest-priority override.
 - **memory update**: Add a one-command legacy-upgrade bootstrap plus state-preserving `memoryctl refresh`, and load managed skills from a source manifest so newly added skills are not omitted.
 - **skills**: Add five `memory-*` command selectors while keeping the underlying CLI commands and the `lark-memory` umbrella router unchanged.
