@@ -132,23 +132,23 @@ func writeGraphJSONField(w io.Writer, key string, value interface{}) error {
 }
 
 func writeGraphDetail(w io.Writer, value interface{}) error {
-	detail, ok := value.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	format, formatOK := detail["format"].(string)
-	schemaVersion, schemaOK := detail["schema_version"].(string)
-	content, contentOK := detail["content"].(string)
-	if !formatOK || !schemaOK || !contentOK {
-		return nil
-	}
-	if _, err := fmt.Fprintf(w, "  detail (%s, %s):\n", format, schemaVersion); err != nil {
-		return err
-	}
-	for _, line := range strings.Split(content, "\n") {
-		if _, err := fmt.Fprintf(w, "    %s\n", line); err != nil {
+	detail, _ := value.(map[string]interface{})
+	content := graphDetailMarkdown(detail)
+	if strings.TrimSpace(content) != "" {
+		if _, err := fmt.Fprintln(w, "  detail.markdown:"); err != nil {
 			return err
 		}
+		for _, line := range strings.Split(content, "\n") {
+			if _, err := fmt.Fprintf(w, "    %s\n", line); err != nil {
+				return err
+			}
+		}
+	} else if graphDetailSourceCount(detail) > 0 {
+		if _, err := fmt.Fprintln(w, "  detail: source_only (no Markdown body)"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintln(w, "  detail: missing"); err != nil {
+		return err
 	}
-	return nil
+	return writeGraphJSONField(w, "detail.source", detail["source"])
 }

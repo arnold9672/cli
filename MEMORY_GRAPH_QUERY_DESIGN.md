@@ -42,7 +42,6 @@ POST /open-apis/search/v2/memory_hub/graph_query
 lark-cli memory +graph-range \
   --start-time-sec <int64> \
   --end-time-sec <int64> \
-  [--detail-format markdown|json] \
   [--format json|ndjson|pretty] \
   [--as user]
 ```
@@ -57,14 +56,14 @@ lark-cli memory +graph-range \
   UID 到 `open_id` 的通讯录转换。
 - `--start-time-sec` 是左闭区间起点，必须是非负 Unix 秒。
 - `--end-time-sec` 是右开区间终点，必须大于起点。
-- `--detail-format` 默认是 `markdown`，仅支持 `markdown` 和 `json`。
+- 详情统一使用 `markdown` 正文和 `source` 来源；不提供详情格式或后端数据版本开关。
 - 总跨度必须满足 `0 < end-start <= 604800`；恰好七天合法，七天加一秒直接拒绝。
 
 时间参数以字符串 flag 接收后显式解析为 `int64`，避免平台相关整数宽度和静默溢出。所有输入
 错误均返回带精确 `param` 的 typed validation error。
 
 Graph shortcut 在身份解析、配置读取、凭证预检、HTTP client 构造和 dry-run 计划生成前执行
-原始 flag 预检。缺失时间参数、非法时间范围和不支持的详情格式会优先返回本地校验错误，不会误报为
+原始 flag 预检。缺失时间参数、非法时间范围和已移除的格式/版本 flag 会优先返回本地错误，不会误报为
 鉴权或配置问题。原始 flag 预检通过后再从 runtime 读取当前用户 `open_id`；登录态缺少有效
 `open_id` 时返回 `authentication/token_missing`，并提示重新完成 `memory:hub` 用户授权。
 
@@ -97,7 +96,7 @@ window_end   = min(window_start + 86400, end)
 
 ## 6. 请求体
 
-每个窗口独立调用 GraphQuery，使用当前登录用户相同的 `open_id` 和详情格式：
+每个窗口独立调用 GraphQuery，使用当前登录用户相同的 `open_id`；不发送格式参数或版本覆盖：
 
 ```json
 {
@@ -105,9 +104,6 @@ window_end   = min(window_start + 86400, end)
   "time_range": {
     "start_time_sec": 1784476800,
     "end_time_sec": 1784563200
-  },
-  "params": {
-    "detail_format": "json"
   }
 }
 ```

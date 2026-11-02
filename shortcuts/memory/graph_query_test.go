@@ -135,7 +135,7 @@ func TestMemoryGraphRangeDryRunShape(t *testing.T) {
 			name: "graph query plans every window",
 			s:    MemoryGraphRange,
 			args: []string{"+graph-range", "--start-time-sec", "100", "--end-time-sec", "86501", "--dry-run", "--as", "user"},
-			want: []string{"graph_query", "ou_graph_test_user", "markdown", "86500", "86501"},
+			want: []string{"graph_query", "ou_graph_test_user", "86500", "86501"},
 		},
 	}
 
@@ -157,25 +157,28 @@ func TestMemoryGraphRangeDryRunShape(t *testing.T) {
 
 func TestMemoryGraphRangeDryRunPlansEveryWindow(t *testing.T) {
 	cases := []struct {
-		name             string
-		detailFormatFlag string
-		wantDetailFormat string
+		name   string
+		format string
 	}{
-		{name: "default markdown", wantDetailFormat: "markdown"},
-		{name: "explicit json", detailFormatFlag: "json", wantDetailFormat: "json"},
-		{name: "normalized markdown", detailFormatFlag: " markdown ", wantDetailFormat: "markdown"},
-		{name: "normalized json", detailFormatFlag: " json ", wantDetailFormat: "json"},
+		{name: "json output", format: "json"},
+		{name: "ndjson output", format: "ndjson"},
+		{name: "pretty output", format: "pretty"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, _ := cmdutil.TestFactory(t, memoryTestConfig(t))
 			args := []string{"+graph-range", "--start-time-sec", "100", "--end-time-sec", "86501", "--dry-run", "--as", "user"}
-			if tc.detailFormatFlag != "" {
-				args = append(args, "--detail-format", tc.detailFormatFlag)
-			}
+			args = append(args, "--format", tc.format)
 			if err := runMemoryShortcut(t, MemoryGraphRange, args, f, stdout); err != nil {
 				t.Fatalf("dry-run: %v", err)
+			}
+			if tc.format == "pretty" {
+				got := stdout.String()
+				if strings.Count(got, "POST "+graphQueryPath) != 2 || !strings.Contains(got, `"end_time_sec":86501`) || strings.Contains(got, `"params"`) || strings.Contains(got, `"options"`) {
+					t.Fatalf("unexpected pretty request plan: %s", got)
+				}
+				return
 			}
 
 			var result struct {
@@ -204,31 +207,14 @@ func TestMemoryGraphRangeDryRunPlansEveryWindow(t *testing.T) {
 				if timeRange["start_time_sec"] != wantWindows[i][0] || timeRange["end_time_sec"] != wantWindows[i][1] {
 					t.Fatalf("call %d time_range = %#v, want [%v, %v)", i+1, timeRange, wantWindows[i][0], wantWindows[i][1])
 				}
-				params, _ := call.Body["params"].(map[string]interface{})
-				if detail, _ := params["detail_format"].(string); detail != tc.wantDetailFormat {
-					t.Fatalf("call %d detail_format = %q, want %q", i+1, detail, tc.wantDetailFormat)
+				if _, ok := call.Body["params"]; ok {
+					t.Fatalf("call %d sends obsolete params", i+1)
+				}
+				if _, ok := call.Body["options"]; ok {
+					t.Fatalf("call %d overrides backend version", i+1)
 				}
 			}
 		})
-	}
-}
-
-func TestMemoryGraphRangePreflightReturnsTypedErrorWhenNormalizationWritebackFails(t *testing.T) {
-	setErr := errors.New("set detail format failed")
-	cmd := &cobra.Command{Use: "+graph-range"}
-	cmd.Flags().Var(&rejectingGraphStringValue{value: " markdown ", err: setErr}, "detail-format", "")
-	cmd.Flags().String("start-time-sec", "100", "")
-	cmd.Flags().String("end-time-sec", "101", "")
-	cmd.Flags().String("jq", "", "")
-	cmd.Flags().String("format", "json", "")
-
-	err := validateGraphQueryRawFlags(context.Background(), cmd)
-	var internal *errs.InternalError
-	if !errors.As(err, &internal) {
-		t.Fatalf("error = %T %v, want typed internal error", err, err)
-	}
-	if !errors.Is(err, setErr) {
-		t.Fatalf("errors.Is(error, setErr) = false: %v", err)
 	}
 }
 
@@ -342,13 +328,14 @@ func TestMemoryGraphRangePreflightRejectsOversizedRangeBeforeDependencies(t *tes
 	assertGraphPreflightValidation(t, err, stdout, calls, "--end-time-sec")
 }
 
-func TestMemoryGraphRangePreflightRejectsInvalidDetailFormatBeforeDependencies(t *testing.T) {
+func TestMemoryGraphRangeRejectsRemovedFlagsBeforeDependencies(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		formatArgs []string
 	}{
 		{name: "unsupported value", formatArgs: []string{"--detail-format", "xml"}},
 		{name: "explicit empty value", formatArgs: []string{"--detail-format="}},
+		{name: "version override", formatArgs: []string{"--use-v2"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args := []string{
@@ -359,7 +346,9 @@ func TestMemoryGraphRangePreflightRejectsInvalidDetailFormatBeforeDependencies(t
 			}
 			args = append(args, tc.formatArgs...)
 			err, stdout, calls := runGraphPreflightWithDependencyProbe(t, args)
-			assertGraphPreflightValidation(t, err, stdout, calls, "--detail-format")
+			if err == nil || !strings.Contains(err.Error(), "unknown flag") || stdout != "" || calls != (graphPreflightDependencyCalls{}) {
+				t.Fatalf("removed flags must fail before dependencies: err=%v stdout=%q calls=%+v", err, stdout, calls)
+			}
 		})
 	}
 }
@@ -1066,11 +1055,11 @@ func TestMemoryGraphRangePrettyRendering(t *testing.T) {
 		Data: map[string]interface{}{
 			"nodes": []interface{}{map[string]interface{}{
 				"node_id": "node-1", "node_type": json.Number("1"), "source_id": "source-1", "event_time_sec": json.Number("100"),
-				"detail": map[string]interface{}{"format": "markdown", "schema_version": "v1", "content": "node detail"},
+				"detail": map[string]interface{}{"markdown": "node detail"},
 			}},
 			"edges": []interface{}{map[string]interface{}{
 				"edge_id": "edge-1", "relation_type": "follows", "from_node_id": "node-1", "to_node_id": "node-2", "event_time_sec": json.Number("101"),
-				"detail": map[string]interface{}{"format": "json", "schema_version": "v1", "content": "{\"key\":\"value\"}"},
+				"detail": map[string]interface{}{"markdown": "edge detail"},
 			}},
 		},
 	}
@@ -1084,7 +1073,7 @@ func TestMemoryGraphRangePrettyRendering(t *testing.T) {
 		"  node_type: 1\n" +
 		"  source_id: source-1\n" +
 		"  event_time_sec: 100\n" +
-		"  detail (markdown, v1):\n" +
+		"  detail.markdown:\n" +
 		"    node detail\n" +
 		"Edges (1)\n" +
 		"- edge_id: edge-1\n" +
@@ -1092,8 +1081,8 @@ func TestMemoryGraphRangePrettyRendering(t *testing.T) {
 		"  from_node_id: node-1\n" +
 		"  to_node_id: node-2\n" +
 		"  event_time_sec: 101\n" +
-		"  detail (json, v1):\n" +
-		"    {\"key\":\"value\"}\n"
+		"  detail.markdown:\n" +
+		"    edge detail\n"
 	if got.String() != want {
 		t.Fatalf("pretty output mismatch\n--- got ---\n%s--- want ---\n%s", got.String(), want)
 	}
@@ -1108,7 +1097,7 @@ func TestMemoryGraphRangePrettyHandlesMalformedOptionalFields(t *testing.T) {
 			"nodes": []interface{}{map[string]interface{}{
 				"node_id": "node-safe", "node_type": json.Number("2"), "source_id": "source-safe",
 				"root_id": []interface{}{"bad"}, "graph_date": map[string]interface{}{"bad": true}, "event_time_sec": []interface{}{json.Number("1")},
-				"detail": map[string]interface{}{"format": []interface{}{}, "schema_version": json.Number("1"), "content": map[string]interface{}{}},
+				"detail": map[string]interface{}{"markdown": map[string]interface{}{}, "source": nil},
 			}},
 			"edges": []interface{}{},
 		},
@@ -1292,9 +1281,7 @@ func graphNode(nodeID, sourceID string, eventTimeSec int64) map[string]interface
 		"graph_date":     "2026-08-26",
 		"event_time_sec": eventTimeSec,
 		"detail": map[string]interface{}{
-			"format":         "markdown",
-			"schema_version": "v1",
-			"content":        "complete node detail",
+			"markdown": "complete node detail",
 		},
 	}
 }
@@ -1307,9 +1294,7 @@ func graphEdge(edgeID, fromNodeID, toNodeID string, eventTimeSec int64) map[stri
 		"to_node_id":     toNodeID,
 		"event_time_sec": eventTimeSec,
 		"detail": map[string]interface{}{
-			"format":         "json",
-			"schema_version": "v1",
-			"content":        "{\"key\":\"value\"}",
+			"markdown": "edge detail",
 		},
 	}
 }
@@ -1322,16 +1307,14 @@ func assertGraphRequestWindow(t *testing.T, body []byte, start, end int64) {
 			StartTimeSec int64 `json:"start_time_sec"`
 			EndTimeSec   int64 `json:"end_time_sec"`
 		} `json:"time_range"`
-		Params struct {
-			DetailFormat string `json:"detail_format"`
-		} `json:"params"`
 	}
 	if err := json.Unmarshal(body, &request); err != nil {
 		t.Fatalf("decode request body: %v\n%s", err, body)
 	}
-	if request.UserID != "ou_graph_test_user" || request.TimeRange.StartTimeSec != start || request.TimeRange.EndTimeSec != end || request.Params.DetailFormat != "markdown" {
-		t.Fatalf("request = user:%q range:[%d,%d) detail:%q, want user:ou_graph_test_user range:[%d,%d) detail:markdown", request.UserID, request.TimeRange.StartTimeSec, request.TimeRange.EndTimeSec, request.Params.DetailFormat, start, end)
+	if request.UserID != "ou_graph_test_user" || request.TimeRange.StartTimeSec != start || request.TimeRange.EndTimeSec != end {
+		t.Fatalf("request = user:%q range:[%d,%d), want user:ou_graph_test_user range:[%d,%d)", request.UserID, request.TimeRange.StartTimeSec, request.TimeRange.EndTimeSec, start, end)
 	}
+	assertGraphProtocolDefaultRequest(t, string(body))
 }
 
 func graphOutputLines(t *testing.T, stdout *bytes.Buffer) []string {

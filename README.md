@@ -272,7 +272,6 @@ Agent 应先完成用户请求所需的事实检索，再应用“跨场景稳�
 lark-memory-cli memory +graph-range --as user \
   --start-time-sec 1784476800 \
   --end-time-sec 1785081600 \
-  --detail-format markdown \
   --format ndjson
 ```
 
@@ -283,10 +282,14 @@ lark-memory-cli memory +graph-range --as user \
 
 - `--start-time-sec`：必填，包含边界的 Unix 秒起始时间。
 - `--end-time-sec`：必填，不包含边界的 Unix 秒结束时间。
-- `--detail-format`：Graph 详情格式，支持 `markdown`（默认）和 `json`。
 - `--format`：输出格式，支持 `json`、`ndjson` 和 `pretty`；不支持 `table`、`csv` 和 `--jq`。
 
 旧命令 `memory +graph-query` 已移除；调用方需要迁移到 `memory +graph-range`。
+
+三个 Graph 命令统一使用最新详情协议：`detail.markdown` 是正文，`detail.source[]` 是来源。
+有来源不等于有正文；pretty 输出会区分 `source_only` 与 `missing`。旧详情字段不再作为正文回退。
+`--format` 仅控制 CLI 输出；已移除 `--detail-format`、`--use-v2`、`--graph-query-use-v2`，
+请求不发送格式或版本覆盖，后端数据版本由服务端默认策略决定。
 
 ## 查询 Memory Graph 一跳关系
 
@@ -300,7 +303,6 @@ lark-memory-cli memory +graph-one-hop --as user \
   --lookback-days 7 \
   --node-type 2,3 \
   --relation-type meeting_discusses_doc \
-  --detail-format markdown \
   --hop 1 \
   --trace-id trace-xxx \
   --format json
@@ -315,7 +317,7 @@ USER 节点及其关联边。
 `--lookback-days` 默认 7，CLI 以执行时刻为右开边界构造完整滚动时间窗；一次命令只发送一次
 OneHop 请求，不做 24 小时切片，也不自动继续下一跳。`--hop` 只记录 Agent 当前探索层数，范围
 1～10；未传 `--trace-id` 时自动生成。`--hop`、`--trace-id` 和 `--scene` 仅作为 CLI 输出元数据，
-不发送给 GraphHub。下行 `params` 只发送协议字段 `detailFormat`。输出支持 `json` 和 `pretty`。
+不发送给 GraphHub。请求不携带详情格式或数据版本选项。输出支持 `json` 和 `pretty`。
 
 JSON 输出的 `data.nodes` 和 `data.edges` 保留下游详情，并补充 `expanded_from` 来源信息；节点还会
 包含 `expandable`。`meta` 包含 Root、节点、边、USER 过滤、Detail 字节数、耗时、hop、trace ID
@@ -344,7 +346,6 @@ Codex 会把选择项后的文本作为 query，并在内部执行下面的 CLI 
 lark-memory-cli memory +graph-search --as user \
   --query "什么是知识问答" \
   --concurrency 8 \
-  --detail-format markdown \
   --graph-query-mode on \
   --graph-query-lookback-days 7 \
   --format json

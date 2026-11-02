@@ -261,9 +261,7 @@ func graphOneHopDetailBytes(nodes, edges []map[string]interface{}) int {
 	total := 0
 	for _, items := range [][]map[string]interface{}{nodes, edges} {
 		for _, item := range items {
-			detail, _ := item["detail"].(map[string]interface{})
-			content, _ := detail["content"].(string)
-			total += len([]byte(content))
+			total += graphDetailContentBytes(item["detail"])
 		}
 	}
 	return total

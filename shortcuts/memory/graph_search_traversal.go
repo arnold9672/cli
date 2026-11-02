@@ -270,7 +270,6 @@ func executeGraphSearchBatch(rctx *common.RuntimeContext, spec graphSearchSpec, 
 		StartTimeSec: batch.StartTimeSec,
 		EndTimeSec:   batch.EndTimeSec,
 		NodeTypes:    []int64{graphSearchIMDayNodeType, graphSearchDocDayNodeType, 3},
-		DetailFormat: spec.DetailFormat,
 		Hop:          batch.Hop,
 		TraceID:      spec.TraceID,
 		Scene:        graphOneHopDefaultScene,
@@ -364,11 +363,11 @@ func mergeGraphSearchObject(objects map[string]map[string]interface{}, candidate
 		objects[id] = candidate
 		return true, graphSearchDetailPresent(candidate["detail"])
 	}
-	newDetail := false
-	if !graphSearchDetailPresent(existing["detail"]) && graphSearchDetailPresent(candidate["detail"]) {
-		existing["detail"] = candidate["detail"]
-		newDetail = true
+	mergedDetail, detailChanged := mergeGraphDetail(existing["detail"], candidate["detail"])
+	if detailChanged {
+		existing["detail"] = mergedDetail
 	}
+	newDetail := detailChanged && graphSearchDetailPresent(mergedDetail)
 	existing["expanded_from"] = mergeGraphSearchExpansions(
 		graphSearchExpansions(existing["expanded_from"]),
 		graphSearchExpansions(candidate["expanded_from"]),

@@ -44,7 +44,6 @@ func TestParseGraphOneHopSpec(t *testing.T) {
 		LookbackDays:  2,
 		NodeTypes:     []int{3, 2, 3},
 		RelationTypes: []string{" meeting_discusses_doc ", "meeting_discusses_doc"},
-		DetailFormat:  " markdown ",
 		Hop:           2,
 		HopSet:        true,
 		Scene:         " graphcli ",
@@ -65,7 +64,7 @@ func TestParseGraphOneHopSpec(t *testing.T) {
 	if !reflect.DeepEqual(spec.RelationTypes, []string{"meeting_discusses_doc"}) {
 		t.Fatalf("relation types = %#v", spec.RelationTypes)
 	}
-	if spec.TraceID != "generated-trace" || spec.DetailFormat != "markdown" || spec.Scene != "graphcli" || spec.Hop != 2 {
+	if spec.TraceID != "generated-trace" || spec.Scene != "graphcli" || spec.Hop != 2 {
 		t.Fatalf("spec = %#v", spec)
 	}
 }
@@ -74,7 +73,6 @@ func TestParseGraphOneHopSpecDefaultsAndValidation(t *testing.T) {
 	valid := graphOneHopInput{
 		Roots:        []string{"2:doc_123"},
 		LookbackDays: 7,
-		DetailFormat: "markdown",
 		Hop:          1,
 		HopSet:       true,
 		Scene:        "graphcli",
@@ -108,7 +106,6 @@ func TestParseGraphOneHopSpecDefaultsAndValidation(t *testing.T) {
 		{name: "user node filter", mutate: func(in *graphOneHopInput) { in.NodeTypes = []int{4} }, param: "--node-type"},
 		{name: "unsupported calendar filter", mutate: func(in *graphOneHopInput) { in.NodeTypes = []int{5} }, param: "--node-type"},
 		{name: "empty relation", mutate: func(in *graphOneHopInput) { in.RelationTypes = []string{" "} }, param: "--relation-type"},
-		{name: "bad detail format", mutate: func(in *graphOneHopInput) { in.DetailFormat = "xml" }, param: "--detail-format"},
 		{name: "bad scene", mutate: func(in *graphOneHopInput) { in.Scene = "other" }, param: "--scene"},
 		{name: "bad output format", mutate: func(in *graphOneHopInput) { in.Format = "ndjson" }, param: "--format"},
 	} {
@@ -138,7 +135,6 @@ func TestGraphOneHopDryRunShape(t *testing.T) {
 		"--node-type", "2",
 		"--node-type", "3",
 		"--relation-type", "meeting_discusses_doc",
-		"--detail-format", "json",
 		"--hop", "2",
 		"--trace-id", "trace-123",
 		"--scene", "graphcli",
@@ -166,11 +162,8 @@ func TestGraphOneHopDryRunShape(t *testing.T) {
 	if got := gjson.Get(stdout.String(), "api.0.body.filters.node_types.#").Int(); got != 2 {
 		t.Fatalf("node type count = %d", got)
 	}
-	if got := gjson.Get(stdout.String(), "api.0.body.params.detailFormat").String(); got != "json" {
-		t.Fatalf("detailFormat = %q", got)
-	}
-	if got := len(gjson.Get(stdout.String(), "api.0.body.params").Map()); got != 1 {
-		t.Fatalf("params count = %d, want 1: %s", got, stdout.String())
+	if gjson.Get(stdout.String(), "api.0.body.params").Exists() || gjson.Get(stdout.String(), "api.0.body.options").Exists() {
+		t.Fatal("OneHop must not send detail format or version overrides")
 	}
 	start := gjson.Get(stdout.String(), "api.0.body.time_range.start_time_sec").Int()
 	end := gjson.Get(stdout.String(), "api.0.body.time_range.end_time_sec").Int()
@@ -191,13 +184,13 @@ func TestGraphOneHopExecuteFiltersUsersAndAddsProvenance(t *testing.T) {
 			"data": map[string]interface{}{
 				"data": map[string]interface{}{
 					"nodes": []interface{}{
-						map[string]interface{}{"node_id": "doc_day:doc_123:2026-09-11", "node_type": 2, "source_id": "doc_123", "root_id": "doc_123", "event_time_sec": 1, "detail": map[string]interface{}{"content": "root"}},
-						map[string]interface{}{"node_id": "meeting:meeting_123", "node_type": 3, "source_id": "meeting_123", "root_id": "meeting_123", "event_time_sec": 2, "detail": map[string]interface{}{"content": "meet"}},
+						map[string]interface{}{"node_id": "doc_day:doc_123:2026-09-11", "node_type": 2, "source_id": "doc_123", "root_id": "doc_123", "event_time_sec": 1, "detail": map[string]interface{}{"markdown": "root"}},
+						map[string]interface{}{"node_id": "meeting:meeting_123", "node_type": 3, "source_id": "meeting_123", "root_id": "meeting_123", "event_time_sec": 2, "detail": map[string]interface{}{"markdown": "meet"}},
 						map[string]interface{}{"node_id": "calendar:calendar_123", "node_type": 5, "source_id": "calendar_123", "event_time_sec": 3},
 						map[string]interface{}{"node_id": "user:user_123", "node_type": 4, "source_id": "user_123", "root_id": "user_123", "event_time_sec": 4},
 					},
 					"edges": []interface{}{
-						map[string]interface{}{"edge_id": "edge-doc-meeting", "relation_type": "meeting_discusses_doc", "from_node_id": "doc_day:doc_123:2026-09-11", "to_node_id": "meeting:meeting_123", "detail": map[string]interface{}{"content": "edge"}},
+						map[string]interface{}{"edge_id": "edge-doc-meeting", "relation_type": "meeting_discusses_doc", "from_node_id": "doc_day:doc_123:2026-09-11", "to_node_id": "meeting:meeting_123", "detail": map[string]interface{}{"markdown": "edge"}},
 						map[string]interface{}{"edge_id": "edge-user-doc", "relation_type": "edit_doc", "from_node_id": "user:user_123", "to_node_id": "doc_day:doc_123:2026-09-11"},
 					},
 				},
@@ -222,9 +215,8 @@ func TestGraphOneHopExecuteFiltersUsersAndAddsProvenance(t *testing.T) {
 	if _, ok := request["filters"]; ok {
 		t.Fatalf("filters must be omitted when no filter flag is set: %#v", request["filters"])
 	}
-	params, _ := request["params"].(map[string]interface{})
-	if !reflect.DeepEqual(params, map[string]interface{}{"detailFormat": "markdown"}) {
-		t.Fatalf("params = %#v, want only detailFormat", params)
+	if _, ok := request["params"]; ok {
+		t.Fatalf("obsolete params must be omitted: %#v", request["params"])
 	}
 
 	got := stdout.String()

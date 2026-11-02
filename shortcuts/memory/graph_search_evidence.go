@@ -40,8 +40,10 @@ type graphSearchNodeDetailRef struct {
 	FirstSeenHop      int    `json:"first_seen_hop,omitempty"`
 	DetailPath        string `json:"detail_path"`
 	DetailPresent     bool   `json:"detail_present"`
-	DetailFormat      string `json:"detail_format,omitempty"`
 	DetailBytes       int    `json:"detail_bytes"`
+	ContentPresent    bool   `json:"content_present"`
+	ContentBytes      int    `json:"content_bytes"`
+	SourceCount       int    `json:"source_count"`
 	SearchOriginCount int    `json:"search_origin_count"`
 	RetrievalClass    string `json:"retrieval_class"`
 }
@@ -54,8 +56,10 @@ type graphSearchEdgeDetailRef struct {
 	FirstSeenHop      int    `json:"first_seen_hop,omitempty"`
 	DetailPath        string `json:"detail_path"`
 	DetailPresent     bool   `json:"detail_present"`
-	DetailFormat      string `json:"detail_format,omitempty"`
 	DetailBytes       int    `json:"detail_bytes"`
+	ContentPresent    bool   `json:"content_present"`
+	ContentBytes      int    `json:"content_bytes"`
+	SourceCount       int    `json:"source_count"`
 	SelfLoop          bool   `json:"self_loop"`
 	FromNodePresent   bool   `json:"from_node_present"`
 	ToNodePresent     bool   `json:"to_node_present"`
@@ -124,8 +128,10 @@ func buildGraphSearchEvidenceIndex(candidates []graphSearchCandidate, nodes, edg
 			FirstSeenHop:      int(firstSeenHop),
 			DetailPath:        fmt.Sprintf("nodes[%d].detail", nodeIndex),
 			DetailPresent:     present,
-			DetailFormat:      graphSearchDetailFormat(node["detail"]),
 			DetailBytes:       graphSearchDetailSize(node["detail"]),
+			ContentPresent:    graphDetailContentPresent(node["detail"]),
+			ContentBytes:      graphDetailContentBytes(node["detail"]),
+			SourceCount:       graphDetailSourceCount(node["detail"]),
 			SearchOriginCount: len(graphSearchOrigins(node["search_origins"])),
 			RetrievalClass:    retrievalClass,
 		})
@@ -167,8 +173,10 @@ func buildGraphSearchEvidenceIndex(candidates []graphSearchCandidate, nodes, edg
 			FirstSeenHop:      int(firstSeenHop),
 			DetailPath:        fmt.Sprintf("edges[%d].detail", edgeIndex),
 			DetailPresent:     present,
-			DetailFormat:      graphSearchDetailFormat(edge["detail"]),
 			DetailBytes:       graphSearchDetailSize(edge["detail"]),
+			ContentPresent:    graphDetailContentPresent(edge["detail"]),
+			ContentBytes:      graphDetailContentBytes(edge["detail"]),
+			SourceCount:       graphDetailSourceCount(edge["detail"]),
 			SelfLoop:          selfLoop,
 			FromNodePresent:   fromPresent,
 			ToNodePresent:     toPresent,
@@ -220,29 +228,7 @@ func buildGraphSearchEvidenceIndex(candidates []graphSearchCandidate, nodes, edg
 }
 
 func graphSearchDetailPresent(detail interface{}) bool {
-	switch value := detail.(type) {
-	case nil:
-		return false
-	case string:
-		return strings.TrimSpace(value) != ""
-	case map[string]interface{}:
-		if len(value) == 0 {
-			return false
-		}
-		if content, exists := value["content"]; exists {
-			return graphSearchDetailPresent(content)
-		}
-		return true
-	case []interface{}:
-		return len(value) > 0
-	default:
-		return true
-	}
-}
-
-func graphSearchDetailFormat(detail interface{}) string {
-	value, _ := detail.(map[string]interface{})
-	return strings.TrimSpace(firstGraphSearchString(value, "format"))
+	return graphDetailContentPresent(detail) || graphDetailSourceCount(detail) > 0
 }
 
 func graphSearchDetailSize(detail interface{}) int {

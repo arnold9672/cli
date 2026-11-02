@@ -14,8 +14,6 @@ import (
 )
 
 func TestParseGraphQuerySpec(t *testing.T) {
-	const validDetailFormat = "markdown"
-
 	tests := []struct {
 		name      string
 		start     string
@@ -28,7 +26,6 @@ func TestParseGraphQuerySpec(t *testing.T) {
 			start: "10",
 			end:   "20",
 			want: graphQuerySpec{
-				DetailFormat: validDetailFormat,
 				Windows: []graphTimeWindow{
 					{Index: 1, StartTimeSec: 10, EndTimeSec: 20},
 				},
@@ -38,7 +35,6 @@ func TestParseGraphQuerySpec(t *testing.T) {
 		{name: "zero span", start: "20", end: "20", wantParam: "--end-time-sec"},
 		{name: "reverse range", start: "20", end: "10", wantParam: "--end-time-sec"},
 		{name: "exactly seven days", start: "10", end: "604810", want: graphQuerySpec{
-			DetailFormat: validDetailFormat,
 			Windows: []graphTimeWindow{
 				{Index: 1, StartTimeSec: 10, EndTimeSec: 86410},
 				{Index: 2, StartTimeSec: 86410, EndTimeSec: 172810},
@@ -59,7 +55,7 @@ func TestParseGraphQuerySpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseGraphQuerySpec(validDetailFormat, tt.start, tt.end)
+			got, err := parseGraphQuerySpec(tt.start, tt.end)
 			if tt.wantParam == "" {
 				if err != nil {
 					t.Fatalf("parseGraphQuerySpec() error = %v", err)
@@ -79,28 +75,6 @@ func TestParseGraphQuerySpec(t *testing.T) {
 			}
 			if validationErr.Param != tt.wantParam {
 				t.Fatalf("validation param = %q, want %q", validationErr.Param, tt.wantParam)
-			}
-		})
-	}
-}
-
-func TestParseGraphQuerySpecRejectsInvalidDetailFormat(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		detailFormat string
-	}{
-		{name: "unsupported value", detailFormat: "xml"},
-		{name: "empty value", detailFormat: ""},
-		{name: "whitespace value", detailFormat: "   "},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := parseGraphQuerySpec(tc.detailFormat, "10", "20")
-			var validation *errs.ValidationError
-			if !errors.As(err, &validation) {
-				t.Fatalf("error = %T %v, want typed validation", err, err)
-			}
-			if validation.Subtype != errs.SubtypeInvalidArgument || validation.Param != "--detail-format" {
-				t.Fatalf("validation = subtype %q param %q, want invalid_argument --detail-format", validation.Subtype, validation.Param)
 			}
 		})
 	}
@@ -146,7 +120,7 @@ func TestParseGraphQuerySpecDoesNotEchoRejectedValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseGraphQuerySpec("markdown", tt.start, tt.end)
+			_, err := parseGraphQuerySpec(tt.start, tt.end)
 			if err == nil {
 				t.Fatal("parseGraphQuerySpec() error = nil, want validation error")
 			}

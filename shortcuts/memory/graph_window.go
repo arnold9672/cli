@@ -23,18 +23,11 @@ type graphTimeWindow struct {
 }
 
 type graphQuerySpec struct {
-	UserID       string
-	DetailFormat string
-	Windows      []graphTimeWindow
+	UserID  string
+	Windows []graphTimeWindow
 }
 
-func parseGraphQuerySpec(detailFormat, startTimeSec, endTimeSec string) (graphQuerySpec, error) {
-	detailFormat = strings.TrimSpace(detailFormat)
-	if detailFormat != "markdown" && detailFormat != "json" {
-		return graphQuerySpec{}, common.ValidationErrorf("invalid --detail-format: must be markdown or json").
-			WithParam("--detail-format")
-	}
-
+func parseGraphQuerySpec(startTimeSec, endTimeSec string) (graphQuerySpec, error) {
 	start, err := parseGraphQueryTime(startTimeSec, "--start-time-sec")
 	if err != nil {
 		return graphQuerySpec{}, err
@@ -58,8 +51,7 @@ func parseGraphQuerySpec(detailFormat, startTimeSec, endTimeSec string) (graphQu
 	}
 
 	return graphQuerySpec{
-		DetailFormat: detailFormat,
-		Windows:      splitGraphQueryWindows(start, end),
+		Windows: splitGraphQueryWindows(start, end),
 	}, nil
 }
 

@@ -315,7 +315,6 @@ lark-memory-cli auth login --scope "memory:hub"
 lark-memory-cli memory +graph-range --as user \
   --start-time-sec 1784476800 \
   --end-time-sec 1785081600 \
-  --detail-format markdown \
   --format ndjson
 ```
 
@@ -347,7 +346,6 @@ lark-memory-cli memory +graph-one-hop --as user \
   --lookback-days 7 \
   --node-type 2,3 \
   --relation-type meeting_discusses_doc \
-  --detail-format markdown \
   --hop 1 \
   --trace-id trace-xxx \
   --format json
@@ -359,7 +357,7 @@ lark-memory-cli memory +graph-one-hop --as user \
 - `--lookback-days` 默认 7，以执行时刻为右开边界；OneHop 不受 GraphQuery 单次 24 小时限制。
 - CLI 每次只发送一个 OneHop 请求，不切窗、不自动循环；`--hop` 范围 1～10，仅记录当前探索层数。
 - `--trace-id` 未传时自动生成，供 Agent 的多次手工探索串联；`--scene` 固定为 `graphcli`。
-  这三个字段仅用于 CLI 输出元数据，不发送给 GraphHub；下行 `params` 只发送 `detailFormat`。
+  这三个字段仅用于 CLI 输出元数据，不发送给 GraphHub；请求不携带详情格式或数据版本选项。
 - `--relation-type` 可重复；未传时不做关系类型过滤。
 - 输出支持 `json` 和 `pretty`；嵌套的节点、边和 meta 不支持 `table`、`csv` 或 `ndjson`。
 
@@ -390,7 +388,6 @@ Graph Root。推荐 Skill 只执行第一跳，之后由 Agent 判断相关性�
 lark-memory-cli memory +graph-search --as user \
   --query "什么是知识问答" \
   --concurrency 8 \
-  --detail-format markdown \
   --graph-query-mode on \
   --graph-query-lookback-days 7 \
   --format json
@@ -414,7 +411,9 @@ lark-memory-cli memory +graph-search --as user \
 - `roots[].search_origins` 显式记录 NodeType、RootID 和日期的推导来源，禁止用 `source_id` 猜 Root。
 - 第一跳按日期分组并发，默认 `--concurrency=8`。首版不限制 Root、节点或关系数量。
 - `data.evidence` 为点和边建立非重复 Detail 索引，记录 Detail 路径/字节数、关系端点、自环和
-  `edge_groups`；原始 Detail 仍只保留在 `nodes` / `edges` 中。每跳输出新增点边及 Detail 数量；
+  `edge_groups`；原始 Detail 仍只保留在 `nodes` / `edges` 中。正文只读取 `detail.markdown`，
+  `source_count` 记录来源，`content_present/content_bytes` 记录 Markdown 正文状态和 UTF-8 字节数，
+  不回退旧详情字段。每跳输出新增点边及 Detail 数量；
   没有新增图证据时提前停止。
 - Skill 使用 `--graph-query-mode=on`，所有 Query 都尝试当前用户时间窗 Graph；明确时间意图使用精确
   时间窗，否则使用 1～7 天滚动窗口。GraphQuery 点边按 NodeID/EdgeID 合并，可靠 Root 写入
