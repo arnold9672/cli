@@ -1,6 +1,6 @@
 ---
 name: memory-graph-search
-version: 0.2.0
+version: 0.4.0
 description: "Search ByteDance-intranet knowledge and produce evidence-grounded answers from permission-filtered candidates, seeded OneHop traversal, and optional time-window GraphQuery node and edge Detail. Use for natural-language knowledge and multi-hop Graph search, not direct time-window or stable-root Graph commands."
 metadata:
   requires:
@@ -26,7 +26,6 @@ This command is available only on the ByteDance intranet.
 lark-memory-cli memory +graph-search \
   --query '<user query>' \
   --concurrency 8 \
-  --detail-format markdown \
   --graph-query-mode on \
   --graph-query-lookback-days 7 \
   --as user \
@@ -47,6 +46,10 @@ the user asks.
 Queries with an explicit supported time intent use that exact range; other queries use the configured rolling
 lookback. Use `off` only when the user asks to avoid GraphQuery. Unsupported explicit ranges over seven days
 skip the supplement and expose `trigger_reason=time_range_unsupported`; they are never silently truncated.
+
+The CLI consumes one Detail contract: Markdown bodies plus sources. Output `--format` controls only
+the CLI envelope. There are no detail-format or backend-version flags; requests preserve the server's
+data-version policy.
 
 Knowledge QA supplies the initial semantic roots, but it is not the only root source. GraphQuery runs in parallel
 and returns every verified `NodeType + RootID` as `data.next_roots`; explicit reliable roots already present in
@@ -77,6 +80,11 @@ passages and Graph evidence, not a generated Knowledge QA answer.
 4. Parse both sides of the graph evidence:
    - Use `data.evidence.node_details[].detail_path` to locate and read relevant `nodes[].detail`.
    - Use `data.evidence.edge_details[].detail_path` to locate and read relevant `edges[].detail`.
+   - Read bodies only from `detail.markdown`. Do not fall back to old fields or endpoints.
+     Distinguish missing Detail, source-only Detail, and a nonempty Markdown body.
+   - Check `content_present` and `content_bytes` in the node/edge evidence index for available body text.
+     `detail_present` can also mean provenance-only Detail; `source_count` counts usable `detail.source[]`
+     entries. Source entity IDs/types are strings, not RootID or SourceID, and do not prove body content.
    - Do not infer relationship meaning from `relation_type`, topology, or edge count alone.
 5. Use `data.evidence.edge_groups` to organize structurally repeated edges without discarding their raw Detail.
    A group with many `im_reply` self-loops is one conversation cluster, not that many independent facts; inspect
@@ -140,7 +148,6 @@ lark-memory-cli memory +graph-one-hop \
   --lookback-days '<days covering the earliest selected anchor_date through now>' \
   --hop '<2_to_10>' \
   --trace-id '<meta.trace_id>' \
-  --detail-format markdown \
   --as user \
   --format json
 ```
@@ -173,8 +180,11 @@ report the limitation and mark the answer incomplete instead of silently selecti
 - If every OneHop batch fails, report the structured error and its `log_id` when present.
 - Supplemental GraphQuery failure must not discard a successful Knowledge QA + OneHop result. Return the
   primary evidence, mark the answer incomplete, and do not invent GraphQuery-only conclusions.
-- Do not use a node or edge whose evidence index reports `detail_present=false` to assert content that is not
+- Do not use a node or edge whose evidence index reports `content_present=false` to assert content that is not
   available elsewhere.
+- Raw node/edge Detail fields are preserved and complementary fields are merged across GraphQuery and
+  OneHop. Per-entry `detail_bytes` remains serialized Detail size; `content_bytes` and `meta.detail_bytes`
+  count UTF-8 Markdown bytes, excluding source metadata and other raw fields.
 - Every material answer claim must link to a candidate URL or carry a traceable Graph path from an initial
   `search_origin` through the supporting edge and node. Surface conflicts instead of silently choosing one.
 - Do not reveal the UID, OpenID, UAT, internal RPC headers, or raw unrelated passages.

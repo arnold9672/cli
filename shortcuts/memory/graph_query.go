@@ -28,15 +28,14 @@ var MemoryGraphRange = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{memoryScope},
 	AuthTypes:   []string{"user"},
+	Tips:        []string{"Graph Detail contains Markdown body and source references; --format controls only CLI output."},
 	Flags: []common.Flag{
 		{Name: "start-time-sec", Desc: "inclusive Unix-second start", Required: true},
 		{Name: "end-time-sec", Desc: "exclusive Unix-second end", Required: true},
-		{Name: "detail-format", Default: "markdown", Desc: "Graph detail format", Enum: []string{"markdown", "json"}},
 	},
 	Preflight: validateGraphQueryRawFlags,
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		spec, err := validateGraphQueryInput(
-			rctx.Str("detail-format"),
 			rctx.Str("start-time-sec"),
 			rctx.Str("end-time-sec"),
 			rctx.JqExpr,
@@ -49,11 +48,7 @@ var MemoryGraphRange = common.Shortcut{
 		return err
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		spec, err := parseGraphQuerySpec(
-			rctx.Str("detail-format"),
-			rctx.Str("start-time-sec"),
-			rctx.Str("end-time-sec"),
-		)
+		spec, err := graphQuerySpecFromRuntime(rctx)
 		if err != nil {
 			// Validate runs before DryRun. Keep this defensive branch non-panicking
 			// for direct hook callers if that framework invariant ever changes.
@@ -73,11 +68,7 @@ var MemoryGraphRange = common.Shortcut{
 		return dryRun
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		spec, err := parseGraphQuerySpec(
-			rctx.Str("detail-format"),
-			rctx.Str("start-time-sec"),
-			rctx.Str("end-time-sec"),
-		)
+		spec, err := graphQuerySpecFromRuntime(rctx)
 		if err != nil {
 			return err
 		}
@@ -90,26 +81,16 @@ var MemoryGraphRange = common.Shortcut{
 }
 
 func validateGraphQueryRawFlags(_ context.Context, cmd *cobra.Command) error {
-	detailFormat, _ := cmd.Flags().GetString("detail-format")
 	startTimeSec, _ := cmd.Flags().GetString("start-time-sec")
 	endTimeSec, _ := cmd.Flags().GetString("end-time-sec")
 	jqExpr, _ := cmd.Flags().GetString("jq")
 	format, _ := cmd.Flags().GetString("format")
-	spec, err := validateGraphQueryInput(detailFormat, startTimeSec, endTimeSec, jqExpr, format)
-	if err != nil {
-		return err
-	}
-	if detailFormat != spec.DetailFormat {
-		if err := cmd.Flags().Set("detail-format", spec.DetailFormat); err != nil {
-			return errs.NewInternalError(errs.SubtypeUnknown, "failed to normalize --detail-format").
-				WithCause(err)
-		}
-	}
-	return nil
+	_, err := validateGraphQueryInput(startTimeSec, endTimeSec, jqExpr, format)
+	return err
 }
 
-func validateGraphQueryInput(detailFormat, startTimeSec, endTimeSec, jqExpr, format string) (graphQuerySpec, error) {
-	spec, err := parseGraphQuerySpec(detailFormat, startTimeSec, endTimeSec)
+func validateGraphQueryInput(startTimeSec, endTimeSec, jqExpr, format string) (graphQuerySpec, error) {
+	spec, err := parseGraphQuerySpec(startTimeSec, endTimeSec)
 	if err != nil {
 		return graphQuerySpec{}, err
 	}
@@ -133,8 +114,11 @@ func buildGraphQueryBody(spec graphQuerySpec, window graphTimeWindow) map[string
 			"start_time_sec": window.StartTimeSec,
 			"end_time_sec":   window.EndTimeSec,
 		},
-		"params": map[string]interface{}{"detail_format": spec.DetailFormat},
 	}
+}
+
+func graphQuerySpecFromRuntime(rctx *common.RuntimeContext) (graphQuerySpec, error) {
+	return parseGraphQuerySpec(rctx.Str("start-time-sec"), rctx.Str("end-time-sec"))
 }
 
 func executeGraphQuery(rctx *common.RuntimeContext, spec graphQuerySpec) error {

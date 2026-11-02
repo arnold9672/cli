@@ -1,6 +1,6 @@
 ---
 name: memory-graph-one-hop
-version: 0.1.0
+version: 0.3.0
 description: "Query one-hop Memory Graph relations from known stable NodeType and RootID values. Use only when reliable roots already exist; do not guess roots or automatically continue multiple hops."
 metadata:
   requires:
@@ -21,7 +21,6 @@ lark-memory-cli memory +graph-one-hop \
   --root '<node_type>:<root_id>' \
   --lookback-days 7 \
   --hop '<agent_hop_1_to_10>' \
-  --detail-format markdown \
   --as user \
   --format json
 ```
@@ -30,5 +29,12 @@ Use `expanded_from` to retain the direct upstream Root, node, and edge. Parse bo
 topology or relation type alone is not evidence. Respect `expandable=false`, filtered USER counts, and any
 typed error. Do not automatically issue another OneHop call unless the user explicitly requests continued
 traversal.
+
+Read node and edge bodies only from `detail.markdown`. `detail.source[]` is provenance, not body
+evidence; keep `entity_id` and `entity_type` as strings, distinct from RootID and SourceID.
+Distinguish missing Detail, source-only Detail, and a nonempty Markdown body. Do not fall back to old
+fields or endpoints. `meta.detail_bytes` counts UTF-8 Markdown bytes, excluding provenance metadata.
+Output `--format` controls the CLI envelope, not the Detail contract. There are no detail-format or
+backend-version flags; requests preserve the server's data-version policy.
 
 For login or `memory:hub` authorization failures, follow `../lark-shared/SKILL.md`.

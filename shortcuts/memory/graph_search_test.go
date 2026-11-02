@@ -50,10 +50,9 @@ func TestGraphSearchMetadata(t *testing.T) {
 
 func TestParseGraphSearchSpec(t *testing.T) {
 	spec, err := parseGraphSearchSpec(graphSearchInput{
-		Query:        " query ",
-		Concurrency:  8,
-		DetailFormat: " markdown ",
-		Format:       "json",
+		Query:       " query ",
+		Concurrency: 8,
+		Format:      "json",
 	}, "trace")
 	if err != nil {
 		t.Fatalf("parseGraphSearchSpec: %v", err)
@@ -67,24 +66,23 @@ func TestParseGraphSearchSpec(t *testing.T) {
 	if spec.GraphQueryMode != graphSearchGraphQueryModeOn || spec.GraphQueryLookbackDays != graphSearchGraphQueryDefaultDays {
 		t.Fatalf("GraphQuery defaults = mode:%q days:%d", spec.GraphQueryMode, spec.GraphQueryLookbackDays)
 	}
-	customInput := graphSearchInput{Query: "q", Concurrency: 8, DetailFormat: "markdown", Format: "json", MemoryTTEnv: "custom_graph_lane"}
+	customInput := graphSearchInput{Query: "q", Concurrency: 8, Format: "json", MemoryTTEnv: "custom_graph_lane"}
 	customSpec, err := parseGraphSearchSpec(customInput, "trace")
 	if err != nil || customSpec.MemoryTTEnv != "custom_graph_lane" {
 		t.Fatalf("custom MemoryTTEnv spec = %#v, err = %v", customSpec, err)
 	}
 
-	valid := graphSearchInput{Query: "q", Concurrency: 8, DetailFormat: "markdown", Format: "json"}
+	valid := graphSearchInput{Query: "q", Concurrency: 8, Format: "json"}
 	for _, tc := range []struct {
 		name  string
 		input graphSearchInput
 		param string
 	}{
-		{name: "empty query", input: graphSearchInput{Concurrency: 8, DetailFormat: "markdown", Format: "json"}, param: "--query"},
-		{name: "bad concurrency", input: graphSearchInput{Query: "q", Concurrency: 0, DetailFormat: "markdown", Format: "json"}, param: "--concurrency"},
-		{name: "bad detail", input: graphSearchInput{Query: "q", Concurrency: 8, DetailFormat: "xml", Format: "json"}, param: "--detail-format"},
-		{name: "bad format", input: graphSearchInput{Query: "q", Concurrency: 8, DetailFormat: "json", Format: "ndjson"}, param: "--format"},
-		{name: "bad graph query mode", input: graphSearchInput{Query: "q", Concurrency: 8, DetailFormat: "json", Format: "json", GraphQueryMode: "bad", GraphQueryModeSet: true}, param: "--graph-query-mode"},
-		{name: "bad graph query lookback", input: graphSearchInput{Query: "q", Concurrency: 8, DetailFormat: "json", Format: "json", GraphQueryLookbackSet: true}, param: "--graph-query-lookback-days"},
+		{name: "empty query", input: graphSearchInput{Concurrency: 8, Format: "json"}, param: "--query"},
+		{name: "bad concurrency", input: graphSearchInput{Query: "q", Concurrency: 0, Format: "json"}, param: "--concurrency"},
+		{name: "bad format", input: graphSearchInput{Query: "q", Concurrency: 8, Format: "ndjson"}, param: "--format"},
+		{name: "bad graph query mode", input: graphSearchInput{Query: "q", Concurrency: 8, Format: "json", GraphQueryMode: "bad", GraphQueryModeSet: true}, param: "--graph-query-mode"},
+		{name: "bad graph query lookback", input: graphSearchInput{Query: "q", Concurrency: 8, Format: "json", GraphQueryLookbackSet: true}, param: "--graph-query-lookback-days"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := parseGraphSearchSpec(tc.input, "trace")
@@ -731,12 +729,12 @@ func TestGraphSearchGraphQueryFailureReturnsPrimaryResultAsIncomplete(t *testing
 
 func TestBuildGraphSearchEvidenceIndexGroupsEdgesAndIndexesDetails(t *testing.T) {
 	nodes := []map[string]interface{}{
-		{"node_id": "n1", "node_type": int64(1), "first_seen_hop": 1, "detail": map[string]interface{}{"content": "node detail", "format": "markdown"}},
+		{"node_id": "n1", "node_type": int64(1), "first_seen_hop": 1, "detail": map[string]interface{}{"markdown": "node detail", "format": "markdown"}},
 		{"node_id": "n2", "node_type": int64(2), "first_seen_hop": 2},
 	}
 	edges := []map[string]interface{}{
-		{"edge_id": "e1", "relation_type": "im_reply", "from_node_id": "n1", "to_node_id": "n1", "first_seen_hop": 1, "detail": map[string]interface{}{"content": "reply one"}},
-		{"edge_id": "e2", "relation_type": "im_reply", "from_node_id": "n1", "to_node_id": "n1", "first_seen_hop": 2, "detail": map[string]interface{}{"content": "reply two"}},
+		{"edge_id": "e1", "relation_type": "im_reply", "from_node_id": "n1", "to_node_id": "n1", "first_seen_hop": 1, "detail": map[string]interface{}{"markdown": "reply one"}},
+		{"edge_id": "e2", "relation_type": "im_reply", "from_node_id": "n1", "to_node_id": "n1", "first_seen_hop": 2, "detail": map[string]interface{}{"markdown": "reply two"}},
 		{"edge_id": "e3", "relation_type": "im_doc_share", "from_node_id": "n1", "to_node_id": "missing", "first_seen_hop": 2},
 	}
 	candidates := []graphSearchCandidate{{Content: "allowed", PermissionFiltered: true}}
@@ -765,14 +763,14 @@ func TestMergeGraphSearchObjectPreservesLateDetail(t *testing.T) {
 	}
 	candidate := map[string]interface{}{
 		"node_id": "n1", "first_seen_hop": 2,
-		"detail": map[string]interface{}{"content": "late detail"},
+		"detail": map[string]interface{}{"markdown": "late detail"},
 	}
 	newObject, newDetail := mergeGraphSearchObject(objects, candidate, "node_id")
 	if newObject || !newDetail {
 		t.Fatalf("merge result newObject=%t newDetail=%t", newObject, newDetail)
 	}
 	detail, _ := objects["n1"]["detail"].(map[string]interface{})
-	if got, _ := detail["content"].(string); got != "late detail" {
+	if got, _ := detail["markdown"].(string); got != "late detail" {
 		t.Fatalf("merged detail content = %q", got)
 	}
 }
@@ -965,14 +963,14 @@ func graphSearchNode(nodeID string, nodeType int64, rootID, graphDate string, ev
 	return map[string]interface{}{
 		"node_id": nodeID, "node_type": nodeType, "root_id": rootID, "source_id": rootID,
 		"graph_date": graphDate, "event_time_sec": eventTime,
-		"detail": map[string]interface{}{"content": nodeID},
+		"detail": map[string]interface{}{"markdown": nodeID},
 	}
 }
 
 func graphSearchEdge(edgeID, fromNodeID, toNodeID string) map[string]interface{} {
 	return map[string]interface{}{
 		"edge_id": edgeID, "relation_type": "related", "from_node_id": fromNodeID, "to_node_id": toNodeID,
-		"detail": map[string]interface{}{"content": edgeID},
+		"detail": map[string]interface{}{"markdown": edgeID},
 	}
 }
 

@@ -46,7 +46,6 @@ type graphOneHopSpec struct {
 	EndTimeSec    int64
 	NodeTypes     []int64
 	RelationTypes []string
-	DetailFormat  string
 	Hop           int
 	TraceID       string
 	Scene         string
@@ -57,7 +56,6 @@ type graphOneHopInput struct {
 	LookbackDays  int
 	NodeTypes     []int
 	RelationTypes []string
-	DetailFormat  string
 	Hop           int
 	HopSet        bool
 	TraceID       string
@@ -75,12 +73,12 @@ var MemoryGraphOneHop = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{memoryScope},
 	AuthTypes:   []string{"user"},
+	Tips:        []string{"Graph Detail contains Markdown body and source references; source-only Detail does not contain body text."},
 	Flags: []common.Flag{
 		{Name: "root", Type: "string_array", Desc: "query root as <node_type>:<root_id>; repeat for multiple roots", Required: true},
 		{Name: "lookback-days", Type: "int", Default: strconv.Itoa(graphOneHopDefaultDays), Desc: "rolling lookback window in days"},
 		{Name: "node-type", Type: "int_array", Desc: "target node type filter; repeat or use CSV; USER (4) is forbidden"},
 		{Name: "relation-type", Type: "string_array", Desc: "relation type filter; repeat for multiple relation types"},
-		{Name: "detail-format", Default: "markdown", Desc: "Graph detail format", Enum: []string{"markdown", "json"}},
 		{Name: "hop", Type: "int", Desc: "current Agent traversal hop (1-10); the API still expands exactly one hop", Required: true},
 		{Name: "trace-id", Desc: "trace ID shared by commands in the same Agent traversal; generated when omitted"},
 		{Name: "scene", Default: graphOneHopDefaultScene, Desc: "fixed Graph caller scene", Enum: []string{graphOneHopDefaultScene}},
@@ -125,7 +123,7 @@ func validateGraphOneHopRawFlags(_ context.Context, cmd *cobra.Command) error {
 	if _, err := parseGraphOneHopSpec(input, time.Now(), "preflight-trace"); err != nil {
 		return err
 	}
-	for _, name := range []string{"detail-format", "scene"} {
+	for _, name := range []string{"scene"} {
 		raw, _ := cmd.Flags().GetString(name)
 		normalized := strings.TrimSpace(raw)
 		if raw == normalized {
@@ -144,7 +142,6 @@ func graphOneHopInputFromCommand(cmd *cobra.Command) graphOneHopInput {
 	lookbackDays, _ := cmd.Flags().GetInt("lookback-days")
 	nodeTypes, _ := cmd.Flags().GetIntSlice("node-type")
 	relationTypes, _ := cmd.Flags().GetStringArray("relation-type")
-	detailFormat, _ := cmd.Flags().GetString("detail-format")
 	hop, _ := cmd.Flags().GetInt("hop")
 	traceID, _ := cmd.Flags().GetString("trace-id")
 	scene, _ := cmd.Flags().GetString("scene")
@@ -154,7 +151,6 @@ func graphOneHopInputFromCommand(cmd *cobra.Command) graphOneHopInput {
 		LookbackDays:  lookbackDays,
 		NodeTypes:     nodeTypes,
 		RelationTypes: relationTypes,
-		DetailFormat:  detailFormat,
 		Hop:           hop,
 		HopSet:        cmd.Flags().Changed("hop"),
 		TraceID:       traceID,
@@ -169,7 +165,6 @@ func graphOneHopSpecFromRuntime(rctx *common.RuntimeContext, now time.Time, gene
 		LookbackDays:  rctx.Int("lookback-days"),
 		NodeTypes:     rctx.IntArray("node-type"),
 		RelationTypes: rctx.StrArray("relation-type"),
-		DetailFormat:  rctx.Str("detail-format"),
 		Hop:           rctx.Int("hop"),
 		HopSet:        rctx.Changed("hop"),
 		TraceID:       rctx.Str("trace-id"),
@@ -179,11 +174,6 @@ func graphOneHopSpecFromRuntime(rctx *common.RuntimeContext, now time.Time, gene
 }
 
 func parseGraphOneHopSpec(input graphOneHopInput, now time.Time, generatedTraceID string) (graphOneHopSpec, error) {
-	detailFormat := strings.TrimSpace(input.DetailFormat)
-	if detailFormat != "markdown" && detailFormat != "json" {
-		return graphOneHopSpec{}, common.ValidationErrorf("invalid --detail-format: must be markdown or json").
-			WithParam("--detail-format")
-	}
 	scene := strings.TrimSpace(input.Scene)
 	if scene != graphOneHopDefaultScene {
 		return graphOneHopSpec{}, common.ValidationErrorf("invalid --scene: must be graphcli").
@@ -248,7 +238,6 @@ func parseGraphOneHopSpec(input graphOneHopInput, now time.Time, generatedTraceI
 		EndTimeSec:    endTimeSec,
 		NodeTypes:     nodeTypes,
 		RelationTypes: relationTypes,
-		DetailFormat:  detailFormat,
 		Hop:           input.Hop,
 		TraceID:       traceID,
 		Scene:         scene,
@@ -348,9 +337,6 @@ func buildGraphOneHopBody(spec graphOneHopSpec) map[string]interface{} {
 		"time_range": map[string]interface{}{
 			"start_time_sec": spec.StartTimeSec,
 			"end_time_sec":   spec.EndTimeSec,
-		},
-		"params": map[string]interface{}{
-			"detailFormat": spec.DetailFormat,
 		},
 	}
 	if len(filters) > 0 {

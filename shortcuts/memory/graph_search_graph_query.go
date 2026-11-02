@@ -293,9 +293,8 @@ func executeGraphSearchGraphQuery(ctx context.Context, rctx *common.RuntimeConte
 	}
 	started := time.Now()
 	querySpec := graphQuerySpec{
-		UserID:       spec.GraphUserID,
-		DetailFormat: spec.DetailFormat,
-		Windows:      plan.Windows,
+		UserID:  spec.GraphUserID,
+		Windows: plan.Windows,
 	}
 	executions := make([]graphWindowExecution, len(plan.Windows))
 	runGraphSearchIndexed(ctx, spec.Concurrency, len(plan.Windows), func(position int) {

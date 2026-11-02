@@ -89,7 +89,7 @@ func TestMemoryDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assertGraphQueryDryRunPlan(t, result.Stdout, "ou_graph_test_user", "markdown", [][2]int64{
+		assertGraphQueryDryRunPlan(t, result.Stdout, "ou_graph_test_user", [][2]int64{
 			{1784476800, 1784563200},
 		})
 	})
@@ -103,14 +103,13 @@ func TestMemoryDryRun(t *testing.T) {
 				"memory", "+graph-range",
 				"--start-time-sec", "100",
 				"--end-time-sec", "86501",
-				"--detail-format", "json",
 				"--dry-run",
 			},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assertGraphQueryDryRunPlan(t, result.Stdout, "ou_graph_test_user", "json", [][2]int64{
+		assertGraphQueryDryRunPlan(t, result.Stdout, "ou_graph_test_user", [][2]int64{
 			{100, 86500},
 			{86500, 86501},
 		})
@@ -126,7 +125,6 @@ func TestMemoryDryRun(t *testing.T) {
 				"--root", "1:im_root_123",
 				"--lookback-days", "1",
 				"--relation-type", "im_reply",
-				"--detail-format", "json",
 				"--hop", "1",
 				"--dry-run",
 			},
@@ -141,8 +139,8 @@ func TestMemoryDryRun(t *testing.T) {
 		require.Equal(t, int64(1), gjson.Get(result.Stdout, "api.0.body.roots.#").Int(), "stdout:\n%s", result.Stdout)
 		require.False(t, gjson.Get(result.Stdout, "api.0.body.filters.node_types").Exists(), "stdout:\n%s", result.Stdout)
 		require.Equal(t, "im_reply", gjson.Get(result.Stdout, "api.0.body.filters.relation_types.0").String(), "stdout:\n%s", result.Stdout)
-		require.Equal(t, "json", gjson.Get(result.Stdout, "api.0.body.params.detailFormat").String(), "stdout:\n%s", result.Stdout)
-		require.Len(t, gjson.Get(result.Stdout, "api.0.body.params").Map(), 1, "stdout:\n%s", result.Stdout)
+		require.False(t, gjson.Get(result.Stdout, "api.0.body.params").Exists(), "OneHop does not select a Detail format")
+		require.False(t, gjson.Get(result.Stdout, "api.0.body.options").Exists(), "OneHop has no GraphQuery options")
 		start := gjson.Get(result.Stdout, "api.0.body.time_range.start_time_sec").Int()
 		end := gjson.Get(result.Stdout, "api.0.body.time_range.end_time_sec").Int()
 		require.Equal(t, int64(24*60*60), end-start, "stdout:\n%s", result.Stdout)
@@ -200,33 +198,6 @@ func TestMemoryDryRun(t *testing.T) {
 		require.Equal(t, "forced_on", gjson.Get(result.Stdout, "graph_query.trigger_reason").String(), "stdout:\n%s", result.Stdout)
 		require.Equal(t, int64(3), gjson.Get(result.Stdout, "graph_query.lookback_days").Int(), "stdout:\n%s", result.Stdout)
 	})
-
-	for _, tc := range []struct {
-		name             string
-		detailFormatFlag string
-		wantDetailFormat string
-	}{
-		{name: "graph query normalizes padded markdown", detailFormatFlag: " markdown ", wantDetailFormat: "markdown"},
-		{name: "graph query normalizes padded json", detailFormatFlag: " json ", wantDetailFormat: "json"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			t.Cleanup(cancel)
-
-			result, err := clie2e.RunCmd(ctx, clie2e.Request{
-				Args: []string{
-					"memory", "+graph-range",
-					"--start-time-sec", "100",
-					"--end-time-sec", "101",
-					"--detail-format", tc.detailFormatFlag,
-					"--dry-run",
-				},
-			})
-			require.NoError(t, err)
-			result.AssertExitCode(t, 0)
-			assertGraphQueryDryRunPlan(t, result.Stdout, "ou_graph_test_user", tc.wantDetailFormat, [][2]int64{{100, 101}})
-		})
-	}
 
 	t.Run("graph query rejects ranges over seven days before planning", func(t *testing.T) {
 		t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -297,7 +268,8 @@ func TestMemoryDryRun(t *testing.T) {
 			result.AssertExitCode(t, 2)
 			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
 			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
-			require.Equal(t, "--detail-format", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
+			require.Equal(t, "--detail-format", gjson.Get(result.Stderr, "error.params.0.name").String(), "stderr:\n%s", result.Stderr)
+			require.Equal(t, "unknown flag", gjson.Get(result.Stderr, "error.params.0.reason").String(), "stderr:\n%s", result.Stderr)
 			require.False(t, gjson.Get(result.Stdout, "api").Exists(), "stdout must not contain an API plan:\n%s", result.Stdout)
 		})
 	}
@@ -333,7 +305,7 @@ func TestMemoryDryRun(t *testing.T) {
 	}
 }
 
-func assertGraphQueryDryRunPlan(t *testing.T, stdout, userID, detailFormat string, windows [][2]int64) {
+func assertGraphQueryDryRunPlan(t *testing.T, stdout, userID string, windows [][2]int64) {
 	t.Helper()
 	require.Equal(t, int64(len(windows)), gjson.Get(stdout, "api.#").Int(), "stdout:\n%s", stdout)
 	for i, window := range windows {
@@ -341,7 +313,8 @@ func assertGraphQueryDryRunPlan(t *testing.T, stdout, userID, detailFormat strin
 		require.Equal(t, "POST", gjson.Get(stdout, path+".method").String(), "stdout:\n%s", stdout)
 		require.Equal(t, "/open-apis/search/v2/memory_hub/graph_query", gjson.Get(stdout, path+".url").String(), "stdout:\n%s", stdout)
 		require.Equal(t, userID, gjson.Get(stdout, path+".body.user_id").String(), "stdout:\n%s", stdout)
-		require.Equal(t, detailFormat, gjson.Get(stdout, path+".body.params.detail_format").String(), "stdout:\n%s", stdout)
+		require.False(t, gjson.Get(stdout, path+".body.params").Exists(), "GraphQuery does not select a Detail format")
+		require.False(t, gjson.Get(stdout, path+".body.options").Exists(), "GraphQuery preserves the backend data-version policy")
 		require.Equal(t, window[0], gjson.Get(stdout, path+".body.time_range.start_time_sec").Int(), "stdout:\n%s", stdout)
 		require.Equal(t, window[1], gjson.Get(stdout, path+".body.time_range.end_time_sec").Int(), "stdout:\n%s", stdout)
 	}

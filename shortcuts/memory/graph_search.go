@@ -38,7 +38,6 @@ const (
 type graphSearchInput struct {
 	Query                  string
 	Concurrency            int
-	DetailFormat           string
 	Format                 string
 	MemoryTTEnv            string
 	GraphQueryMode         string
@@ -50,7 +49,6 @@ type graphSearchInput struct {
 type graphSearchSpec struct {
 	Query                  string
 	Concurrency            int
-	DetailFormat           string
 	InternalUserID         int64
 	GraphUserID            string
 	TraceID                string
@@ -78,11 +76,11 @@ var MemoryGraphSearch = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "query", Desc: "natural-language intranet knowledge query", Required: true},
 		{Name: "concurrency", Type: "int", Default: strconv.Itoa(graphSearchDefaultConcurrency), Desc: "maximum concurrent Graph Search network requests across all stages"},
-		{Name: "detail-format", Default: "markdown", Desc: "Graph detail format", Enum: []string{"markdown", "json"}},
 		{Name: "graph-query-mode", Default: graphSearchGraphQueryModeOn, Desc: "time-window GraphQuery mode; defaults on so every query attempts Graph memory recall", Enum: []string{graphSearchGraphQueryModeAuto, graphSearchGraphQueryModeOn, graphSearchGraphQueryModeOff}},
 		{Name: "graph-query-lookback-days", Type: "int", Default: strconv.Itoa(graphSearchGraphQueryDefaultDays), Desc: "fallback rolling GraphQuery lookback when enabled (1-7); exact query time ranges take precedence"},
 	},
 	Tips: []string{
+		"Graph Detail uses Markdown bodies and source references; no format or backend-version selection is needed.",
 		"ByteDance intranet only. The current UAT is verified and converted to the internal UID automatically.",
 		"Graph Search business requests default to x-tt-env=ppe_memory_hub; LARKSUITE_CLI_MEMORY_TT_ENV overrides it for this process.",
 		"Minutes are returned as skipped candidates because Knowledge QA does not expose a stable MEETING root.",
@@ -154,7 +152,7 @@ func validateGraphSearchRawFlags(_ context.Context, cmd *cobra.Command) error {
 	if _, err := parseGraphSearchSpec(input, "preflight-trace"); err != nil {
 		return err
 	}
-	for _, name := range []string{"query", "detail-format", "graph-query-mode"} {
+	for _, name := range []string{"query", "graph-query-mode"} {
 		raw, _ := cmd.Flags().GetString(name)
 		normalized := strings.TrimSpace(raw)
 		if raw == normalized {
@@ -170,14 +168,12 @@ func validateGraphSearchRawFlags(_ context.Context, cmd *cobra.Command) error {
 func graphSearchInputFromCommand(cmd *cobra.Command) graphSearchInput {
 	query, _ := cmd.Flags().GetString("query")
 	concurrency, _ := cmd.Flags().GetInt("concurrency")
-	detailFormat, _ := cmd.Flags().GetString("detail-format")
 	format, _ := cmd.Flags().GetString("format")
 	graphQueryMode, _ := cmd.Flags().GetString("graph-query-mode")
 	graphQueryLookbackDays, _ := cmd.Flags().GetInt("graph-query-lookback-days")
 	return graphSearchInput{
 		Query:                  query,
 		Concurrency:            concurrency,
-		DetailFormat:           detailFormat,
 		Format:                 format,
 		MemoryTTEnv:            os.Getenv(envMemoryTTEnv),
 		GraphQueryMode:         graphQueryMode,
@@ -191,7 +187,6 @@ func graphSearchSpecFromRuntime(rctx *common.RuntimeContext, generatedTraceID st
 	return parseGraphSearchSpec(graphSearchInput{
 		Query:                  rctx.Str("query"),
 		Concurrency:            rctx.Int("concurrency"),
-		DetailFormat:           rctx.Str("detail-format"),
 		Format:                 rctx.Format,
 		MemoryTTEnv:            os.Getenv(envMemoryTTEnv),
 		GraphQueryMode:         rctx.Str("graph-query-mode"),
@@ -209,11 +204,6 @@ func parseGraphSearchSpec(input graphSearchInput, generatedTraceID string) (grap
 	if input.Concurrency <= 0 {
 		return graphSearchSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"invalid --concurrency: must be positive").WithParam("--concurrency")
-	}
-	detailFormat := strings.TrimSpace(input.DetailFormat)
-	if detailFormat != "markdown" && detailFormat != "json" {
-		return graphSearchSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"invalid --detail-format: must be markdown or json").WithParam("--detail-format")
 	}
 	if input.Format != "json" && input.Format != "pretty" {
 		return graphSearchSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -252,7 +242,6 @@ func parseGraphSearchSpec(input graphSearchInput, generatedTraceID string) (grap
 	return graphSearchSpec{
 		Query:                  query,
 		Concurrency:            input.Concurrency,
-		DetailFormat:           detailFormat,
 		TraceID:                traceID,
 		MemoryTTEnv:            memoryTTEnv,
 		GraphQueryMode:         graphQueryMode,
@@ -284,7 +273,6 @@ func buildGraphSearchDryRun(spec graphSearchSpec) *common.DryRunAPI {
 			"expose verified GraphQuery nodes as next_roots without auto-expanding them",
 		}).
 		Set("concurrency", spec.Concurrency).
-		Set("detail_format", spec.DetailFormat).
 		Set("one_hop_tt_env", spec.MemoryTTEnv).
 		Set("graph_query", buildGraphSearchGraphQueryDryRun(spec))
 }
