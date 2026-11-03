@@ -19,15 +19,7 @@ func callMemoryAPITyped(rctx *common.RuntimeContext, method, apiPath string, bod
 }
 
 func callMemoryAPITypedWithContext(rctx *common.RuntimeContext, callCtx context.Context, method, apiPath string, body interface{}) (map[string]interface{}, error) {
-	return callMemoryAPITypedWithContextAndTTEnv(rctx, callCtx, method, apiPath, body, "")
-}
-
-func callMemoryAPITypedWithContextAndTTEnv(rctx *common.RuntimeContext, callCtx context.Context, method, apiPath string, body interface{}, ttEnv string) (map[string]interface{}, error) {
-	headers := memoryExtraHeaders()
-	if value := strings.TrimSpace(ttEnv); value != "" {
-		headers.Set("x-tt-env", value)
-	}
-	return callMemoryAPITypedWithContextAndHeaders(rctx, callCtx, method, apiPath, body, headers)
+	return callMemoryAPITypedWithContextAndHeaders(rctx, callCtx, method, apiPath, body, memoryExtraHeaders())
 }
 
 func callMemoryAPITypedWithContextAndHeaders(rctx *common.RuntimeContext, callCtx context.Context, method, apiPath string, body interface{}, headers http.Header) (map[string]interface{}, error) {
@@ -44,12 +36,12 @@ func callMemoryAPITypedWithContextAndHeaders(rctx *common.RuntimeContext, callCt
 }
 
 func memoryExtraHeaders() http.Header {
-	ttEnv := strings.TrimSpace(os.Getenv(envMemoryTTEnv))
-	if ttEnv == "" {
-		ttEnv = defaultMemoryTTEnv
-	}
 	h := make(http.Header)
-	h.Set("x-tt-env", ttEnv)
+	// Direct Memory/Graph commands leave routing to the gateway unless the
+	// caller explicitly selects a lane. Composite commands pass headers explicitly.
+	if ttEnv := strings.TrimSpace(os.Getenv(envMemoryTTEnv)); ttEnv != "" {
+		h.Set("x-tt-env", ttEnv)
+	}
 	return h
 }
 

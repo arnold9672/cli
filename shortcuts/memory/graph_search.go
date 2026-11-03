@@ -28,7 +28,7 @@ const (
 	graphSearchAppID                 int64 = 1234
 	graphSearchDefaultConcurrency          = 8
 	graphSearchTimezoneOffsetSec           = 8 * 60 * 60
-	graphSearchDefaultTTEnv                = defaultMemoryTTEnv
+	graphSearchDefaultFaaSTTEnv            = "ppe_memory_hub"
 	graphSearchGraphQueryModeAuto          = "auto"
 	graphSearchGraphQueryModeOn            = "on"
 	graphSearchGraphQueryModeOff           = "off"
@@ -39,7 +39,7 @@ type graphSearchInput struct {
 	Query                  string
 	Concurrency            int
 	Format                 string
-	MemoryTTEnv            string
+	FaaSTTEnv              string
 	GraphQueryMode         string
 	GraphQueryModeSet      bool
 	GraphQueryLookbackDays int
@@ -52,7 +52,7 @@ type graphSearchSpec struct {
 	InternalUserID         int64
 	GraphUserID            string
 	TraceID                string
-	MemoryTTEnv            string
+	FaaSTTEnv              string
 	GraphQueryMode         string
 	GraphQueryLookbackDays int
 	RequestLimiter         chan struct{}
@@ -82,7 +82,7 @@ var MemoryGraphSearch = common.Shortcut{
 	Tips: []string{
 		"Graph Detail uses Markdown bodies and source references; no format or backend-version selection is needed.",
 		"ByteDance intranet only. The current UAT is verified and converted to the internal UID automatically.",
-		"Graph Search business requests default to x-tt-env=ppe_memory_hub; LARKSUITE_CLI_MEMORY_TT_ENV overrides it for this process.",
+		"Only identity conversion and Knowledge QA default to x-tt-env=ppe_memory_hub; LARKSUITE_CLI_MEMORY_TT_ENV overrides that FaaS lane. Internal Graph requests never inherit it.",
 		"Minutes are returned as skipped candidates because Knowledge QA does not expose a stable MEETING root.",
 		"GraphQuery nodes with verified NodeType and RootID are returned as next_roots for Agent selection; they are never auto-expanded.",
 		"Graph Search always performs the initial OneHop only. Inspect node/edge Detail and next_roots before issuing memory +graph-one-hop.",
@@ -175,7 +175,7 @@ func graphSearchInputFromCommand(cmd *cobra.Command) graphSearchInput {
 		Query:                  query,
 		Concurrency:            concurrency,
 		Format:                 format,
-		MemoryTTEnv:            os.Getenv(envMemoryTTEnv),
+		FaaSTTEnv:              os.Getenv(envMemoryTTEnv),
 		GraphQueryMode:         graphQueryMode,
 		GraphQueryModeSet:      cmd.Flags().Changed("graph-query-mode"),
 		GraphQueryLookbackDays: graphQueryLookbackDays,
@@ -188,7 +188,7 @@ func graphSearchSpecFromRuntime(rctx *common.RuntimeContext, generatedTraceID st
 		Query:                  rctx.Str("query"),
 		Concurrency:            rctx.Int("concurrency"),
 		Format:                 rctx.Format,
-		MemoryTTEnv:            os.Getenv(envMemoryTTEnv),
+		FaaSTTEnv:              os.Getenv(envMemoryTTEnv),
 		GraphQueryMode:         rctx.Str("graph-query-mode"),
 		GraphQueryModeSet:      rctx.Changed("graph-query-mode"),
 		GraphQueryLookbackDays: rctx.Int("graph-query-lookback-days"),
@@ -209,11 +209,11 @@ func parseGraphSearchSpec(input graphSearchInput, generatedTraceID string) (grap
 		return graphSearchSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--format must be json or pretty for memory +graph-search").WithParam("--format")
 	}
-	memoryTTEnv := strings.TrimSpace(input.MemoryTTEnv)
-	if memoryTTEnv == "" {
-		memoryTTEnv = graphSearchDefaultTTEnv
+	faasTTEnv := strings.TrimSpace(input.FaaSTTEnv)
+	if faasTTEnv == "" {
+		faasTTEnv = graphSearchDefaultFaaSTTEnv
 	}
-	if len(memoryTTEnv) > 256 || strings.ContainsAny(memoryTTEnv, "\r\n") {
+	if len(faasTTEnv) > 256 || strings.ContainsAny(faasTTEnv, "\r\n") {
 		return graphSearchSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"%s must be a valid single-line header value", envMemoryTTEnv)
 	}
@@ -243,7 +243,7 @@ func parseGraphSearchSpec(input graphSearchInput, generatedTraceID string) (grap
 		Query:                  query,
 		Concurrency:            input.Concurrency,
 		TraceID:                traceID,
-		MemoryTTEnv:            memoryTTEnv,
+		FaaSTTEnv:              faasTTEnv,
 		GraphQueryMode:         graphQueryMode,
 		GraphQueryLookbackDays: graphQueryLookbackDays,
 	}, nil
@@ -263,16 +263,16 @@ func buildGraphSearchDryRun(spec graphSearchSpec) *common.DryRunAPI {
 		POST(graphSearchKnowledgeQAURL).
 		Desc("[3] Search ByteDance intranet knowledge with the converted UID; dynamic Wiki and OneHop calls depend on this response").
 		Body(buildGraphSearchKnowledgeBody(spec.Query, uidPlaceholder)).
-		Set("identity_conversion_headers", map[string]string{"X-Tt-Env": spec.MemoryTTEnv}).
-		Set("knowledge_qa_headers", buildGraphSearchKnowledgeHeaders(uidPlaceholder, spec.MemoryTTEnv)).
+		Set("identity_conversion_headers", map[string]string{"X-Tt-Env": spec.FaaSTTEnv}).
+		Set("knowledge_qa_headers", buildGraphSearchKnowledgeHeaders(uidPlaceholder, spec.FaaSTTEnv)).
 		Set("dynamic_steps", []string{
-			"when enabled, query the current user's time-window Graph in parallel with Knowledge QA using the same x-tt-env",
+			"when enabled, query the current user's time-window Graph in parallel with Knowledge QA without a lane header",
 			"resolve Wiki node_token values with GET /open-apis/wiki/v2/spaces/get_node",
 			"group stable roots by Asia/Shanghai graph_date",
 			"call /open-apis/search/v2/memory_hub/one_hop exactly once for the initial roots",
 			"expose verified GraphQuery nodes as next_roots without auto-expanding them",
 		}).
 		Set("concurrency", spec.Concurrency).
-		Set("one_hop_tt_env", spec.MemoryTTEnv).
+		Set("one_hop_headers", map[string]string{}).
 		Set("graph_query", buildGraphSearchGraphQueryDryRun(spec))
 }

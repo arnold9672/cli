@@ -218,15 +218,6 @@ func TestMemoryGraphRangeDryRunPlansEveryWindow(t *testing.T) {
 	}
 }
 
-type rejectingGraphStringValue struct {
-	value string
-	err   error
-}
-
-func (v *rejectingGraphStringValue) String() string   { return v.value }
-func (v *rejectingGraphStringValue) Type() string     { return "string" }
-func (v *rejectingGraphStringValue) Set(string) error { return v.err }
-
 func TestMemoryGraphRangeValidation(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -475,6 +466,7 @@ func TestMemoryGraphRangeExecuteOneWindowEmitsOneEnvelope(t *testing.T) {
 }
 
 func TestMemoryGraphRangeExecuteStreamsWindowsChronologically(t *testing.T) {
+	t.Setenv(envMemoryTTEnv, "")
 	f, stdout, _, reg := memoryGraphTestFactory(t)
 	first := graphQueryStubForWindow(100, 86500, graphNode("node-first", "source-first", 100), graphEdge("edge-first", "node-first", "node-next", 101))
 	second := graphQueryStubForWindow(86500, 86501, graphNode("node-second", "source-second", 86500), graphEdge("edge-second", "node-second", "node-last", 86501))
@@ -492,9 +484,7 @@ func TestMemoryGraphRangeExecuteStreamsWindowsChronologically(t *testing.T) {
 	wantWindows := [][2]int64{{100, 86500}, {86500, 86501}}
 	for i, stub := range []*httpmock.Stub{first, second} {
 		assertGraphRequestWindow(t, stub.CapturedBody, wantWindows[i][0], wantWindows[i][1])
-		if got := stub.CapturedHeaders.Get("x-tt-env"); got != "ppe_memory_hub" {
-			t.Fatalf("call %d x-tt-env = %q, want ppe_memory_hub", i+1, got)
-		}
+		assertMemoryLaneHeader(t, stub.CapturedHeaders, "")
 	}
 
 	lines := graphOutputLines(t, stdout)

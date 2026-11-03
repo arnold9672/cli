@@ -174,9 +174,30 @@ func TestMemoryDryRun(t *testing.T) {
 		require.Equal(t, "ppe_memory_hub", gjson.Get(result.Stdout, "knowledge_qa_headers.X-Tt-Env").String(), "stdout:\n%s", result.Stdout)
 		require.NotContains(t, result.Stdout, "7000000000000000001", "stdout must not contain a concrete UID")
 		require.Equal(t, int64(5), gjson.Get(result.Stdout, "dynamic_steps.#").Int(), "stdout:\n%s", result.Stdout)
-		require.Equal(t, "ppe_memory_hub", gjson.Get(result.Stdout, "one_hop_tt_env").String(), "stdout:\n%s", result.Stdout)
+		for _, path := range []string{"one_hop_headers", "graph_query.headers"} {
+			require.True(t, gjson.Get(result.Stdout, path).IsObject())
+			require.Empty(t, gjson.Get(result.Stdout, path).Map())
+		}
+		require.False(t, gjson.Get(result.Stdout, "one_hop_tt_env").Exists())
+		require.False(t, gjson.Get(result.Stdout, "graph_query.tt_env").Exists())
 		require.Equal(t, "on", gjson.Get(result.Stdout, "graph_query.mode").String(), "stdout:\n%s", result.Stdout)
 		require.True(t, gjson.Get(result.Stdout, "graph_query.enabled").Bool(), "stdout:\n%s", result.Stdout)
+	})
+
+	t.Run("graph search limits lane override to prerequisites", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_MEMORY_TT_ENV", " custom_prerequisite_lane ")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"memory", "+graph-search", "--query", "project", "--dry-run"}})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		for _, path := range []string{"identity_conversion_headers.X-Tt-Env", "knowledge_qa_headers.X-Tt-Env"} {
+			require.Equal(t, "custom_prerequisite_lane", gjson.Get(result.Stdout, path).String())
+		}
+		for _, path := range []string{"one_hop_headers", "graph_query.headers"} {
+			require.True(t, gjson.Get(result.Stdout, path).IsObject())
+			require.Empty(t, gjson.Get(result.Stdout, path).Map())
+		}
 	})
 
 	t.Run("graph search can force supplemental graph query", func(t *testing.T) {
@@ -322,6 +343,7 @@ func assertGraphQueryDryRunPlan(t *testing.T, stdout, userID string, windows [][
 
 func setMemoryDryRunEnv(t *testing.T) {
 	t.Helper()
+	t.Setenv("LARKSUITE_CLI_MEMORY_TT_ENV", "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_APP_ID", "")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "")

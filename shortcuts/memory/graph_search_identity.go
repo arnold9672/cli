@@ -69,7 +69,7 @@ func callGraphSearchIdentityConversion(ctx context.Context, rctx *common.Runtime
 		return 0, errs.NewInternalError(errs.SubtypeSDKError, "failed to create Graph Search identity request").WithCause(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Tt-Env", spec.MemoryTTEnv)
+	req.Header.Set("X-Tt-Env", spec.FaaSTTEnv)
 	resp, err := httpClient.Do(req) //nolint:forbidigo // use the injected CLI transport for the fixed intranet FaaS endpoint.
 	if err != nil {
 		return 0, errs.NewNetworkError(errs.SubtypeNetworkTransport, "Graph Search identity conversion transport failed").WithCause(err)

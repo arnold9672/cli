@@ -1,6 +1,6 @@
 ---
 name: memory-graph-search
-version: 0.4.0
+version: 0.5.0
 description: "Search ByteDance-intranet knowledge and produce evidence-grounded answers from permission-filtered candidates, seeded OneHop traversal, and optional time-window GraphQuery node and edge Detail. Use for natural-language knowledge and multi-hop Graph search, not direct time-window or stable-root Graph commands."
 metadata:
   requires:
@@ -38,9 +38,10 @@ the internal UID through the intranet identity service and uses the two identiti
 UID for Knowledge QA and the UAT-derived OpenID for Graph. There is no local UID override. Do not retry business
 requests after an authentication or identity conversion failure; follow the authorization recovery below.
 
-The identity conversion, Knowledge QA, OneHop, and supplemental GraphQuery requests default to `ppe_memory_hub`. An explicit
-`LARKSUITE_CLI_MEMORY_TT_ENV` overrides that default for the current process; do not change the lane unless
-the user asks.
+Only the identity-conversion and Knowledge QA FaaS requests default to `ppe_memory_hub`. An explicit
+`LARKSUITE_CLI_MEMORY_TT_ENV` overrides that prerequisite lane; do not change it unless the user asks.
+The `user_info` check, Wiki resolution, internal OneHop, and supplemental GraphQuery send no lane header,
+even when the environment variable is set. Never carry the prerequisite FaaS lane into Graph data requests.
 
 `--graph-query-mode on` makes every Graph Search query attempt a time-window Graph lookup during the pilot.
 Queries with an explicit supported time intent use that exact range; other queries use the configured rolling
@@ -90,7 +91,7 @@ passages and Graph evidence, not a generated Knowledge QA answer.
    A group with many `im_reply` self-loops is one conversation cluster, not that many independent facts; inspect
    the member edge Detail to determine what the replies actually say.
 6. Inspect `data.graph_query`:
-   - GraphQuery runs in parallel with Knowledge QA and uses the same lane.
+   - GraphQuery runs in parallel with Knowledge QA, but sends no lane header; only the FaaS uses a lane.
    - OneHop may execute while GraphQuery is still running, but final evidence merging waits for both branches.
    - Check `range_source`, `start_time_sec`, and `end_time_sec` before using time-window evidence.
    - Its nodes and edges are merged by NodeID/EdgeID only after the initial OneHop finishes.
@@ -140,9 +141,12 @@ After the initial Graph Search command:
    and a `data.next_roots` candidate is likely to supply the missing information.
 3. Select only reliable, expandable roots. Do not select USER, `expandable=false`, missing RootID, repeated, or
    clearly irrelevant roots. If the three continuation conditions are not all true, stop.
-4. Call exactly one additional hop with the same trace:
+4. Call exactly one additional hop with the same trace and no lane header. Unset
+   `LARKSUITE_CLI_MEMORY_TT_ENV` for that OneHop process so an exported prerequisite FaaS override
+   cannot change Graph routing:
 
 ```bash
+env -u LARKSUITE_CLI_MEMORY_TT_ENV \
 lark-memory-cli memory +graph-one-hop \
   --root '<node_type>:<root_id>' \
   --lookback-days '<days covering the earliest selected anchor_date through now>' \

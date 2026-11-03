@@ -363,18 +363,14 @@ type graphOneHopCallResult struct {
 }
 
 func callGraphOneHop(rctx *common.RuntimeContext, spec graphOneHopSpec) (*graphOneHopCallResult, error) {
-	return callGraphOneHopWithTTEnv(rctx, spec, "")
+	return callGraphOneHopWithHeaders(rctx, spec, memoryExtraHeaders())
 }
 
-func callGraphOneHopWithTTEnv(rctx *common.RuntimeContext, spec graphOneHopSpec, ttEnv string) (*graphOneHopCallResult, error) {
+func callGraphOneHopWithHeaders(rctx *common.RuntimeContext, spec graphOneHopSpec, headers http.Header) (*graphOneHopCallResult, error) {
 	req := &larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
 		ApiPath:    graphOneHopPath,
 		Body:       buildGraphOneHopBody(spec),
-	}
-	headers := memoryExtraHeaders()
-	if value := strings.TrimSpace(ttEnv); value != "" {
-		headers.Set("x-tt-env", value)
 	}
 	started := time.Now()
 	resp, err := rctx.DoAPIWithHeadersContext(

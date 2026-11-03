@@ -100,7 +100,7 @@ func buildGraphSearchGraphQueryDryRun(spec graphSearchSpec) map[string]interface
 		"start_time_sec": plan.StartTimeSec,
 		"end_time_sec":   plan.EndTimeSec,
 		"window_count":   len(plan.Windows),
-		"tt_env":         spec.MemoryTTEnv,
+		"headers":        map[string]string{},
 		"note":           "GraphQuery runs in parallel; verified roots are exposed as next_roots for Agent selection and are never auto-expanded",
 	}
 }
@@ -305,13 +305,14 @@ func executeGraphSearchGraphQuery(ctx context.Context, rctx *common.RuntimeConte
 				return nil, err
 			}
 			defer release()
-			return callMemoryAPITypedWithContextAndTTEnv(
+			// Graph data requests must not inherit the prerequisite FaaS lane.
+			return callMemoryAPITypedWithContextAndHeaders(
 				rctx,
 				client.WithSingleTransportAttempt(callCtx),
 				http.MethodPost,
 				graphQueryPath,
 				buildGraphQueryBody(querySpec, window),
-				spec.MemoryTTEnv,
+				nil,
 			)
 		}, graphQueryRetryInterval)
 	})

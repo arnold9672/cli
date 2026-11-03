@@ -1,6 +1,6 @@
 ---
 name: memory-graph-one-hop
-version: 0.3.0
+version: 0.4.0
 description: "Query one-hop Memory Graph relations from known stable NodeType and RootID values. Use only when reliable roots already exist; do not guess roots or automatically continue multiple hops."
 metadata:
   requires:
@@ -29,6 +29,10 @@ Use `expanded_from` to retain the direct upstream Root, node, and edge. Parse bo
 topology or relation type alone is not evidence. Respect `expandable=false`, filtered USER counts, and any
 typed error. Do not automatically issue another OneHop call unless the user explicitly requests continued
 traversal.
+
+The standalone command sends no lane header by default. Only an explicitly set, nonblank
+`LARKSUITE_CLI_MEMORY_TT_ENV` adds `x-tt-env`. Do not invent a lane; when continuing a Graph Search
+traversal, unset that variable for the OneHop process so it does not inherit the prerequisite FaaS lane.
 
 Read node and edge bodies only from `detail.markdown`. `detail.source[]` is provenance, not body
 evidence; keep `entity_id` and `entity_type` as strings, distinct from RootID and SourceID.
