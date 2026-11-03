@@ -95,7 +95,7 @@ func callGraphSearchKnowledge(ctx context.Context, rctx *common.RuntimeContext, 
 	if err != nil {
 		return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "failed to create Knowledge QA request").WithCause(err)
 	}
-	for key, value := range buildGraphSearchKnowledgeHeaders(strconv.FormatInt(spec.InternalUserID, 10), spec.MemoryTTEnv) {
+	for key, value := range buildGraphSearchKnowledgeHeaders(strconv.FormatInt(spec.InternalUserID, 10), spec.FaaSTTEnv) {
 		req.Header.Set(key, value)
 	}
 

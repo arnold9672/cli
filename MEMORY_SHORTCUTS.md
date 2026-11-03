@@ -10,9 +10,10 @@
 - `lark-memory-cli memory +writing-style`
 
 这六个 shortcut 使用用户身份调用，需要 `memory:hub` scope。当前 Memory Hub 默认调用线上
-OpenAPI 域名；通用 Memory/Graph/FaaS 命令默认发送 `x-tt-env: ppe_memory_hub`，
-`+writing-style` 默认读取 `ppe_memory_schema`，均可通过 `LARKSUITE_CLI_MEMORY_TT_ENV`
-为当前进程覆盖。
+OpenAPI 域名；`+list`、`+get`、`+graph-range`、`+graph-one-hop` 默认不发送 `x-tt-env`。
+`+graph-search` 仅身份转换、问答 FaaS 默认使用 `ppe_memory_hub`，其内部 Graph 请求不带泳道头。
+`+writing-style` 默认读取 `ppe_memory_schema`。显式设置非空 `LARKSUITE_CLI_MEMORY_TT_ENV`
+可为直接命令和 writing-style 指定泳道；对 Graph Search 只覆盖前置 FaaS。
 
 安装脚本不会覆盖用户已有的 `lark-cli`。它会安装一个独立命令
 `lark-memory-cli`。
@@ -394,13 +395,14 @@ lark-memory-cli memory +graph-search --as user \
 ```
 
 - 仅内网可用。Knowledge QA 的 `TenantID=1`、`AppID=1234` 固定。
-- Graph Search 的身份转换 FaaS、Knowledge QA FaaS、OneHop 与补充 GraphQuery 统一发送
-  `x-tt-env: ppe_memory_hub`，与其它四个命令一致。`LARKSUITE_CLI_MEMORY_TT_ENV`
-  可临时覆盖当前进程。
+- Graph Search 仅身份转换 FaaS 和 Knowledge QA FaaS 默认发送 `x-tt-env: ppe_memory_hub`；
+  `LARKSUITE_CLI_MEMORY_TT_ENV` 对此命令只覆盖这两类请求。`user_info`、Wiki、内部
+  GraphQuery/OneHop 不发送泳道头。基于 Search 结果调用独立 `+graph-one-hop` 续跳时，
+  需为该次命令清除该环境变量，不继承前置 FaaS 的泳道。
 - 调用 Knowledge QA 前，命令先用当前 UAT 调用 `/open-apis/authen/v1/user_info` 获取 `open_id`，再通过
   `https://f3s0wk4f.fn.bytedance.net/knowledge_qa/out_id_to_in_id` 转换为内部 UID；Knowledge QA 使用同一
-  FaaS 下的 `/knowledge_qa/search`。转换请求与 Graph
-  请求使用相同 `x-tt-env`。不得把 UID、OpenID 或 UAT 写入输出或日志。
+  FaaS 下的 `/knowledge_qa/search`。仅转换和问答使用前置 FaaS 泳道，Graph 数据请求不指定泳道。
+  不得把 UID、OpenID 或 UAT 写入输出或日志。
 - Knowledge QA 只消费权限过滤后的 `passages`，不使用 `passages_ignore_filter`；候选 `content` 会保留
   在 `search_candidates` 中，供 Agent 作为最新事实基线。
 - Doc URL Token 映射为 DOC_DAY；Wiki `node_token` 通过 get-node 转成 `obj_token` 后映射为
@@ -451,21 +453,21 @@ head -n 5 "$(command -v lark-memory-cli)"
 LARKSUITE_CLI_REMOTE_META="${LARKSUITE_CLI_REMOTE_META:-off}"
 ```
 
-默认请求走线上 OpenAPI 域名。通用 Memory/Graph/FaaS 命令默认发送
-`x-tt-env: ppe_memory_hub`，`+writing-style` 默认发送 `x-tt-env: ppe_memory_schema`。
-如需覆盖，可以显式设置：
+默认请求走线上 OpenAPI 域名。`+list`、`+get`、`+graph-range`、`+graph-one-hop` 默认不发送
+`x-tt-env`；环境变量未设置、为空或纯空白时都不会发送空泳道头。`+graph-search` 仅前置 FaaS 默认
+使用 `ppe_memory_hub`，内部 Graph 请求不继承泳道。`+writing-style` 默认使用 `ppe_memory_schema`。
+需要覆盖时才显式设置：
 
 ```bash
 export LARKSUITE_CLI_OPEN_BASE_URL="https://open.feishu-pre.cn"
 export LARKSUITE_CLI_MEMORY_TT_ENV="ppe_memory_hub"
 ```
 
-等价的原始请求形态：
+未显式指定泳道时，等价的原始请求形态：
 
 ```bash
 curl -i -X GET 'https://open.feishu.cn/open-apis/search/v2/memory_hub/list_memory' \
   -H "Authorization: Bearer <USER_ACCESS_TOKEN>" \
-  -H 'x-tt-env: ppe_memory_hub' \
   -H 'Content-Type: application/json' \
   --data '{}'
 ```

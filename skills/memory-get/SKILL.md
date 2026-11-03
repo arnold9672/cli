@@ -1,6 +1,6 @@
 ---
 name: memory-get
-version: 0.1.0
+version: 0.2.0
 description: "Read one Memory Hub entry by memory_key for the current user. Use when a specific Memory payload, summary, or metadata record is needed; do not use for inventory or Graph queries."
 metadata:
   requires:
@@ -26,3 +26,6 @@ lark-memory-cli memory +get --memory-key '<memory_key>' --payload-mode metadata 
 The default payload mode is `full`. Use the smallest mode that answers the request, and disclose only the
 relevant fields. Treat a result whose status is not `ready` as incomplete. For login or `memory:hub`
 authorization failures, follow `../lark-shared/SKILL.md`; do not switch to bot identity.
+
+By default this command sends no lane header. Only an explicitly set, nonblank
+`LARKSUITE_CLI_MEMORY_TT_ENV` adds `x-tt-env`; do not select a lane unless the user requests one.

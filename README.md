@@ -10,10 +10,12 @@ shortcuts：
 - `lark-memory-cli memory +graph-search`
 - `lark-memory-cli memory +writing-style`
 
-这六个命令使用用户身份调用，需要 `memory:hub` scope。Memory Hub 当前默认调用
-线上 OpenAPI 域名；通用 Memory/Graph/FaaS 命令默认发送 `x-tt-env: ppe_memory_hub`，
-`+writing-style` 默认读取 `ppe_memory_schema`，均可通过 `LARKSUITE_CLI_MEMORY_TT_ENV`
-为当前进程覆盖。安装脚本会生成独立 wrapper，不覆盖用户已有 `lark-cli` 命令。
+这六个命令使用用户身份调用，需要 `memory:hub` scope，默认调用线上 OpenAPI 域名。
+`+list`、`+get`、`+graph-range`、`+graph-one-hop` 默认不发送 `x-tt-env`，由网关按默认路由处理。
+`+graph-search` 仅 OpenID 转换和知识问答 FaaS 默认使用 `ppe_memory_hub`，内部 GraphQuery/OneHop
+不带泳道头；`+writing-style` 仍默认使用 `ppe_memory_schema`。非空 `LARKSUITE_CLI_MEMORY_TT_ENV`
+可覆盖四个直接命令和 writing-style 的泳道，但对 Graph Search 只覆盖前置 FaaS，不会传入内部
+Graph 数据请求。安装脚本不会覆盖已有 `lark-cli` 命令。
 
 更完整的安装与排障说明见 [MEMORY_SHORTCUTS.md](./MEMORY_SHORTCUTS.md)。
 
@@ -352,13 +354,14 @@ lark-memory-cli memory +graph-search --as user \
 ```
 
 - 该命令仅在字节跳动内网可用；`TenantID=1`、`AppID=1234` 固定。
-- Graph Search 的身份转换 FaaS、Knowledge QA FaaS、OneHop 与补充 GraphQuery 统一发送
-  `x-tt-env: ppe_memory_hub`，与其它四个命令一致。可用 `LARKSUITE_CLI_MEMORY_TT_ENV`
-  临时覆盖当前进程。
+- Graph Search 仅身份转换 FaaS 与 Knowledge QA FaaS 默认发送 `x-tt-env: ppe_memory_hub`；
+  `LARKSUITE_CLI_MEMORY_TT_ENV` 对此命令只覆盖这两类请求。`user_info`、Wiki 解析、内部
+  GraphQuery/OneHop 不发送泳道头。基于 Search 结果调用独立 `+graph-one-hop` 续跳时，
+  需为该次命令清除该环境变量，避免继承前置 FaaS 的泳道。
 - 调用 Knowledge QA 前，命令先用当前 UAT 调用 `/open-apis/authen/v1/user_info` 获取 `open_id`，再通过
   `https://f3s0wk4f.fn.bytedance.net/knowledge_qa/out_id_to_in_id` 转换为内部 UID；Knowledge QA 使用同一
-  FaaS 下的 `/knowledge_qa/search`。转换请求与 Graph
-  请求使用相同 `x-tt-env`，不存在本地 UID 覆盖入口。
+  FaaS 下的 `/knowledge_qa/search`。转换和问答使用前置 FaaS 泳道，Graph 数据请求不指定泳道；
+  不存在本地 UID 覆盖入口。
 - `search_candidates` 只来自权限过滤后的 `passages`，并保留候选 `content` 作为最新事实基线；
   `passages_ignore_filter` 永远不会进入输出或成为 Graph 起点。
 - Wiki 节点会使用 `wiki:node:retrieve` 解析底层 `obj_token`；单个 Wiki 解析失败只跳过该候选。
@@ -368,7 +371,7 @@ lark-memory-cli memory +graph-search --as user \
   `new_node_count`、`new_edge_count` 及对应 Detail 数量。若一跳没有新增点或边，将提前停止。
 - Skill 使用 `--graph-query-mode=on`，让每个 Query 都并行尝试用户 Graph；有明确时间意图时使用
   精确自然时间窗，否则使用配置的 1～7 天滚动窗口。超过 7 天不静默截断，而是跳过补充并说明原因。
-- GraphQuery 与 OneHop 使用同一泳道，返回点边按 NodeID/EdgeID 合并。带可靠 NodeType、RootID 和日期的
+- GraphQuery 与 OneHop 均不指定泳道，返回点边按 NodeID/EdgeID 合并。带可靠 NodeType、RootID 和日期的
   GraphQuery 节点写入 `next_roots`，但不会自动进入 OneHop；Agent 判断后才能继续。`retrieved_via`
   和 evidence `retrieval_class` 标记 `one_hop_only`、`graph_query_only`、`corroborated`。
 - Knowledge QA 返回后立即开始 Wiki/OneHop，不等待独立 GraphQuery；最终答案仍等待两路汇合。
@@ -400,9 +403,9 @@ head -n 5 "$(command -v lark-memory-cli)"
 LARKSUITE_CLI_REMOTE_META="${LARKSUITE_CLI_REMOTE_META:-off}"
 ```
 
-默认请求走线上 OpenAPI 域名。通用 Memory/Graph/FaaS 命令默认发送
-`x-tt-env: ppe_memory_hub`，`+writing-style` 默认发送 `x-tt-env: ppe_memory_schema`。
-如需覆盖，可以显式设置：
+默认请求走线上 OpenAPI 域名。`+list`、`+get`、`+graph-range`、`+graph-one-hop` 默认不发送
+`x-tt-env`。`+graph-search` 仅身份转换、问答 FaaS 默认使用 `ppe_memory_hub`，内部 Graph 请求始终
+不继承泳道。`+writing-style` 默认使用 `ppe_memory_schema`。入口域名与泳道是独立配置；需要覆盖时才显式设置：
 
 ```bash
 export LARKSUITE_CLI_OPEN_BASE_URL="https://open.feishu-pre.cn"

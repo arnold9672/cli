@@ -112,6 +112,10 @@ window_end   = min(window_start + 86400, end)
 用户认证的本地登录态读取当前用户 `open_id`，不会从 Memory 内容、自然语言上下文或任意 UID
 推断目标用户，也不会切换到 bot 身份查询通讯录。
 
+独立 `+graph-range` 默认不发送 `x-tt-env`，仅在 `LARKSUITE_CLI_MEMORY_TT_ENV` 为非空值时
+发送显式泳道；未设置、空值或纯空白都表示不指定。Graph Search 的补充 GraphQuery 始终不带
+泳道头，不继承前置身份转换、问答 FaaS 的泳道，也不继承该环境变量。
+
 ## 7. 并发执行模型
 
 `executeGraphQuery` 负责完整生命周期：

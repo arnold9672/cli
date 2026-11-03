@@ -60,16 +60,16 @@ func TestParseGraphSearchSpec(t *testing.T) {
 	if spec.Query != "query" || spec.InternalUserID != 0 || spec.GraphUserID != "" || spec.TraceID != "trace" {
 		t.Fatalf("spec = %#v", spec)
 	}
-	if spec.MemoryTTEnv != graphSearchDefaultTTEnv {
-		t.Fatalf("MemoryTTEnv = %q, want %q", spec.MemoryTTEnv, graphSearchDefaultTTEnv)
+	if spec.FaaSTTEnv != graphSearchDefaultFaaSTTEnv {
+		t.Fatalf("FaaSTTEnv = %q, want %q", spec.FaaSTTEnv, graphSearchDefaultFaaSTTEnv)
 	}
 	if spec.GraphQueryMode != graphSearchGraphQueryModeOn || spec.GraphQueryLookbackDays != graphSearchGraphQueryDefaultDays {
 		t.Fatalf("GraphQuery defaults = mode:%q days:%d", spec.GraphQueryMode, spec.GraphQueryLookbackDays)
 	}
-	customInput := graphSearchInput{Query: "q", Concurrency: 8, Format: "json", MemoryTTEnv: "custom_graph_lane"}
+	customInput := graphSearchInput{Query: "q", Concurrency: 8, Format: "json", FaaSTTEnv: "custom_graph_lane"}
 	customSpec, err := parseGraphSearchSpec(customInput, "trace")
-	if err != nil || customSpec.MemoryTTEnv != "custom_graph_lane" {
-		t.Fatalf("custom MemoryTTEnv spec = %#v, err = %v", customSpec, err)
+	if err != nil || customSpec.FaaSTTEnv != "custom_graph_lane" {
+		t.Fatalf("custom FaaSTTEnv spec = %#v, err = %v", customSpec, err)
 	}
 
 	valid := graphSearchInput{Query: "q", Concurrency: 8, Format: "json"}
@@ -93,7 +93,7 @@ func TestParseGraphSearchSpec(t *testing.T) {
 		})
 	}
 	invalidLane := valid
-	invalidLane.MemoryTTEnv = "bad\nlane"
+	invalidLane.FaaSTTEnv = "bad\nlane"
 	if _, err := parseGraphSearchSpec(invalidLane, "trace"); err == nil {
 		t.Fatal("parseGraphSearchSpec accepted a multi-line x-tt-env value")
 	}
@@ -277,7 +277,7 @@ func TestGraphSearchDerivesBothUIDsFromVerifiedUAT(t *testing.T) {
 	}
 	if gjson.GetBytes(identityStub.CapturedBody, "out_ids.0").String() != openID ||
 		gjson.GetBytes(identityStub.CapturedBody, "id_type").Int() != graphSearchOpenIDType ||
-		identityStub.CapturedHeaders.Get("X-Tt-Env") != graphSearchDefaultTTEnv {
+		identityStub.CapturedHeaders.Get("X-Tt-Env") != graphSearchDefaultFaaSTTEnv {
 		t.Fatalf("identity request body=%s headers=%v", identityStub.CapturedBody, identityStub.CapturedHeaders)
 	}
 	if knowledgeStub.CapturedHeaders.Get("Rpc-Transit-USER-ID") != strconv.FormatInt(internalUID, 10) ||
@@ -356,7 +356,7 @@ func TestGraphSearchDryRunRedactsUIDAndDescribesDynamicSteps(t *testing.T) {
 		gjson.Get(got, "api.2.body.query").String() != "什么是知识问答" {
 		t.Fatalf("query missing from dry-run: %s", got)
 	}
-	if gjson.Get(got, "identity_conversion_headers.X-Tt-Env").String() != graphSearchDefaultTTEnv ||
+	if gjson.Get(got, "identity_conversion_headers.X-Tt-Env").String() != graphSearchDefaultFaaSTTEnv ||
 		gjson.Get(got, "knowledge_qa_headers.Rpc-Transit-USER-ID").String() != "<from out_id_to_in_id_map>" {
 		t.Fatalf("UID placeholder missing: %s", got)
 	}
@@ -366,12 +366,10 @@ func TestGraphSearchDryRunRedactsUIDAndDescribesDynamicSteps(t *testing.T) {
 	if gjson.Get(got, "max_hops").Exists() {
 		t.Fatalf("dry-run must not expose a max_hops setting: %s", got)
 	}
-	if gjson.Get(got, "one_hop_tt_env").String() != graphSearchDefaultTTEnv {
-		t.Fatalf("Graph Search default lane missing: %s", got)
-	}
+	assertGraphSearchDryRunHasUnroutedGraphRequests(t, got)
 }
 
-func TestGraphSearchDryRunUsesMemoryLaneOverride(t *testing.T) {
+func TestGraphSearchDryRunUsesFaaSLaneOverrideOnly(t *testing.T) {
 	t.Setenv(envMemoryTTEnv, "custom_graph_lane")
 	f, stdout, _, _ := cmdutil.TestFactory(t, memoryTestConfig(t))
 	err := runGraphSearchShortcut(t, []string{
@@ -380,8 +378,24 @@ func TestGraphSearchDryRunUsesMemoryLaneOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run: %v", err)
 	}
-	if got := gjson.Get(stdout.String(), "one_hop_tt_env").String(); got != "custom_graph_lane" {
-		t.Fatalf("one_hop_tt_env = %q, want custom_graph_lane: %s", got, stdout.String())
+	for _, path := range []string{"identity_conversion_headers.X-Tt-Env", "knowledge_qa_headers.X-Tt-Env"} {
+		if got := gjson.Get(stdout.String(), path).String(); got != "custom_graph_lane" {
+			t.Fatalf("%s = %q, want custom_graph_lane", path, got)
+		}
+	}
+	assertGraphSearchDryRunHasUnroutedGraphRequests(t, stdout.String())
+}
+
+func assertGraphSearchDryRunHasUnroutedGraphRequests(t *testing.T, output string) {
+	t.Helper()
+	for _, path := range []string{"one_hop_headers", "graph_query.headers"} {
+		headers := gjson.Get(output, path)
+		if !headers.IsObject() || len(headers.Map()) != 0 {
+			t.Fatalf("%s must describe no routing headers", path)
+		}
+	}
+	if gjson.Get(output, "one_hop_tt_env").Exists() || gjson.Get(output, "graph_query.tt_env").Exists() {
+		t.Fatal("Graph request plans must not expose an inherited FaaS lane")
 	}
 }
 
@@ -504,7 +518,7 @@ func TestGraphSearchExecutesInitialHopAndMergesOrigins(t *testing.T) {
 	}
 	if knowledgeStub.CapturedHeaders.Get("Rpc-Transit-USER-ID") != strconv.FormatInt(graphSearchTestInternalUID, 10) ||
 		knowledgeStub.CapturedHeaders.Get("Rpc-Persist-TENANT-ID") != "1" ||
-		knowledgeStub.CapturedHeaders.Get("X-Tt-Env") != defaultMemoryTTEnv {
+		knowledgeStub.CapturedHeaders.Get("X-Tt-Env") != graphSearchDefaultFaaSTTEnv {
 		t.Fatalf("Knowledge QA headers = %#v", knowledgeStub.CapturedHeaders)
 	}
 	var request map[string]interface{}
@@ -517,9 +531,7 @@ func TestGraphSearchExecutesInitialHopAndMergesOrigins(t *testing.T) {
 	if gjson.GetBytes(hopOneStub.CapturedBody, "roots.#").Int() != 3 {
 		t.Fatalf("Hop 1 roots were not grouped by date: %s", hopOneStub.CapturedBody)
 	}
-	if gotLane := hopOneStub.CapturedHeaders.Get("x-tt-env"); gotLane != graphSearchDefaultTTEnv {
-		t.Fatalf("Graph Search x-tt-env = %q, want %q", gotLane, graphSearchDefaultTTEnv)
-	}
+	assertMemoryLaneHeader(t, hopOneStub.CapturedHeaders, "")
 	if len(wikiStub.CapturedBodies) != 1 {
 		t.Fatalf("duplicate Wiki candidates caused %d get-node calls, want 1", len(wikiStub.CapturedBodies))
 	}
@@ -674,9 +686,7 @@ func TestGraphSearchAutoGraphQueryRunsConcurrentlyAndMergesWithoutExpanding(t *t
 		gjson.Get(got, "meta.stop_reason").String() != "agent_decision_required" {
 		t.Fatalf("GraphQuery root was not exposed for Agent selection: %s", got)
 	}
-	if gotLane := graphQueryStub.CapturedHeaders.Get("x-tt-env"); gotLane != graphSearchDefaultTTEnv {
-		t.Fatalf("GraphQuery x-tt-env = %q, want %q", gotLane, graphSearchDefaultTTEnv)
-	}
+	assertMemoryLaneHeader(t, graphQueryStub.CapturedHeaders, "")
 	if len(oneHopStub.CapturedBodies) != 1 || graphSearchBodyHasRoot(oneHopStub.CapturedBody, "docG") {
 		t.Fatalf("GraphQuery-only node entered OneHop frontier: %s", oneHopStub.CapturedBody)
 	}

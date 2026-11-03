@@ -12,7 +12,6 @@ const (
 	memoryService       = "memory"
 	memoryScope         = "memory:hub"
 	memoryAPIBasePath   = "/open-apis/search/v2/memory_hub"
-	defaultMemoryTTEnv  = "ppe_memory_hub"
 	envMemoryTTEnv      = "LARKSUITE_CLI_MEMORY_TT_ENV"
 	payloadModeMetadata = "metadata"
 	payloadModeSummary  = "summary"

@@ -74,6 +74,7 @@ func TestMemoryGetValidation(t *testing.T) {
 }
 
 func TestMemoryListExecuteUnwrapsData(t *testing.T) {
+	t.Setenv(envMemoryTTEnv, "")
 	f, stdout, _, reg := cmdutil.TestFactory(t, memoryTestConfig(t))
 	stub := &httpmock.Stub{
 		Method: "GET",
@@ -100,9 +101,7 @@ func TestMemoryListExecuteUnwrapsData(t *testing.T) {
 	if err := runMemoryShortcut(t, MemoryList, []string{"+list", "--as", "user", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if got := stub.CapturedHeaders.Get("x-tt-env"); got != defaultMemoryTTEnv {
-		t.Fatalf("x-tt-env = %q, want %q", got, defaultMemoryTTEnv)
-	}
+	assertMemoryLaneHeader(t, stub.CapturedHeaders, "")
 	got := stdout.String()
 	if !strings.Contains(got, `"memories"`) || !strings.Contains(got, "personal_memory_snapshot") {
 		t.Fatalf("stdout missing unwrapped memories: %s", got)
@@ -113,6 +112,7 @@ func TestMemoryListExecuteUnwrapsData(t *testing.T) {
 }
 
 func TestMemoryGetExecuteSendsFullPayloadMode(t *testing.T) {
+	t.Setenv(envMemoryTTEnv, "")
 	f, stdout, _, reg := cmdutil.TestFactory(t, memoryTestConfig(t))
 	stub := &httpmock.Stub{
 		Method: "POST",
@@ -139,9 +139,7 @@ func TestMemoryGetExecuteSendsFullPayloadMode(t *testing.T) {
 	if !bytes.Contains(stub.CapturedBody, []byte(`"payload_mode":"full"`)) {
 		t.Fatalf("request body should include default payload_mode=full, got %s", string(stub.CapturedBody))
 	}
-	if got := stub.CapturedHeaders.Get("x-tt-env"); got != defaultMemoryTTEnv {
-		t.Fatalf("x-tt-env = %q, want %q", got, defaultMemoryTTEnv)
-	}
+	assertMemoryLaneHeader(t, stub.CapturedHeaders, "")
 	if !bytes.Contains(stdout.Bytes(), []byte(`"memory_key"`)) {
 		t.Fatalf("stdout should include memory data, got %s", stdout.String())
 	}

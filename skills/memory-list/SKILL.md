@@ -1,6 +1,6 @@
 ---
 name: memory-list
-version: 0.1.0
+version: 0.2.0
 description: "List Memory Hub entries visible to the current user. Use for Memory inventory and variant discovery, not for reading payload content or querying Graph nodes and edges."
 metadata:
   requires:
@@ -15,6 +15,9 @@ Use the current user identity and run:
 ```bash
 lark-memory-cli memory +list --as user --format json
 ```
+
+By default this command sends no lane header. Only an explicitly set, nonblank
+`LARKSUITE_CLI_MEMORY_TT_ENV` adds `x-tt-env`; do not select a lane unless the user requests one.
 
 Summarize only the available entries and their `memory_key`, name, variants, default variant, status,
 description, and showcase. Do not fetch a payload unless the user also asks to read one entry; use

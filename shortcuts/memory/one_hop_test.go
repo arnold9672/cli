@@ -173,6 +173,7 @@ func TestGraphOneHopDryRunShape(t *testing.T) {
 }
 
 func TestGraphOneHopExecuteFiltersUsersAndAddsProvenance(t *testing.T) {
+	t.Setenv(envMemoryTTEnv, "")
 	f, stdout, _, reg := cmdutil.TestFactory(t, memoryTestConfig(t))
 	stub := &httpmock.Stub{
 		Method:  http.MethodPost,
@@ -205,9 +206,7 @@ func TestGraphOneHopExecuteFiltersUsersAndAddsProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if got := stub.CapturedHeaders.Get("x-tt-env"); got != defaultMemoryTTEnv {
-		t.Fatalf("x-tt-env = %q, want %q", got, defaultMemoryTTEnv)
-	}
+	assertMemoryLaneHeader(t, stub.CapturedHeaders, "")
 	var request map[string]interface{}
 	if err := json.Unmarshal(stub.CapturedBody, &request); err != nil {
 		t.Fatalf("decode request: %v", err)

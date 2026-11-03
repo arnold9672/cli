@@ -285,7 +285,8 @@ func executeGraphSearchBatch(rctx *common.RuntimeContext, spec graphSearchSpec, 
 			execution.Err = permitErr
 			return execution
 		}
-		result, err := callGraphOneHopWithTTEnv(rctx, oneHopSpec, spec.MemoryTTEnv)
+		// The FaaS lane is only for identity conversion and Knowledge QA.
+		result, err := callGraphOneHopWithHeaders(rctx, oneHopSpec, nil)
 		release()
 		if err == nil {
 			execution.Result = result
